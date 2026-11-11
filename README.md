@@ -1,4 +1,4 @@
-# PhysioPlay V0.1
+# PhysioPlay V0.1.2
 
 Bouger · Jouer · Progresser. Prototype de jeu de cibles avec caméra frontale, sans serveur applicatif.
 
@@ -72,3 +72,18 @@ Aucune vidéo enregistrée ou transmise. Images et coordonnées restent en mémo
 Prototype à évaluer, sans validation clinique ni mesure goniométrique. Une cible numérotée à la fois ; pas encore de séquence multicible, cibles rouges d'inhibition, progression automatique, historique patient ou connexion professionnelle. Pas de garantie de performance avant essais sur appareils réels. Le moteur synchrone pourra être déplacé dans un Worker après mesure des performances.
 
 Références : [MediaPipe Web](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/web_js), [Vite et GitHub Pages](https://vite.dev/guide/static-deploy#github-pages).
+
+## Mise à jour 0.1.2 — espace de jeu
+
+- Bouton « Plein écran » dans la barre de jeu : utilise le plein écran natif quand disponible, sinon occupe toute la fenêtre. Quitter par le bouton ou Échap. Sur iPad, l'affichage exact et le masquage des barres Safari restent à vérifier ; le lancement depuis l'écran d'accueil est également à tester.
+- Les réglages restent dans la préparation ; les compteurs, Pause et Terminer restent visibles en plein écran.
+- La vidéo conserve ses proportions, avec des bandes si nécessaire : aucun étirement ni recadrage. Le Canvas et les pointeurs utilisent le même rectangle d'image en mode normal et plein écran.
+- Largeur et hauteur des cibles réglables séparément de 50 à 150 % de la zone calibrée. À 100 %, la calibration reste la référence. L'agrandissement dépasse volontairement cette enveloppe ; le thérapeute doit vérifier le confort et l'accessibilité des mouvements.
+- Les réglages sont verrouillés pendant la séance. Un bouton rétablit 100 %. La zone en pointillés montre les limites des centres de cibles ; une marge conserve les cercles entiers dans l'image.
+
+## Suite proposée, non implémentée
+
+1. Affiner le suivi des mains et le confort de jeu : point d'interaction main/poignet, filtrage, retour de validation et compte à rebours.
+2. Ajouter des séquences de plusieurs cibles numérotées et le jeu vert/rouge pour coordination et inhibition.
+3. Ajouter des réglages de maintien et des zones de travail ciblées, avec des profils de séance.
+4. Enrichir le bilan et proposer un export volontaire des résultats sans vidéo, après définition des données utiles.
