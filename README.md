@@ -1,4 +1,4 @@
-# PhysioPlay V0.1.2
+# PhysioPlay V0.1.3
 
 Bouger · Jouer · Progresser. Prototype de jeu de cibles avec caméra frontale, sans serveur applicatif.
 
@@ -87,3 +87,12 @@ Références : [MediaPipe Web](https://ai.google.dev/edge/mediapipe/solutions/vi
 2. Ajouter des séquences de plusieurs cibles numérotées et le jeu vert/rouge pour coordination et inhibition.
 3. Ajouter des réglages de maintien et des zones de travail ciblées, avec des profils de séance.
 4. Enrichir le bilan et proposer un export volontaire des résultats sans vidéo, après définition des données utiles.
+
+## Mise à jour 0.1.3 — préparation et affichage compact
+
+- Largeur et hauteur de zone à 150 % par défaut au lancement. Le bouton « Zone calibrée · 100 % » reste disponible.
+- Chaque nouvelle séance et chaque « Rejouer » commence par cinq secondes de préparation. Les cibles et le chronomètre de séance commencent seulement après le décompte. Le bouton plein écran reste disponible pendant le départ ; celui-ci peut être annulé.
+- Une interruption de visibilité pendant le départ l'annule ; un changement d'orientation demande de recalibrer. Le temps de préparation ne consomme pas la durée choisie.
+- Un bouton Réglages ouvre un dialogue avec trois onglets : Séance, Zone des cibles, À propos. Il est verrouillé pendant calibration, départ, jeu ou pause. Pour modifier après une pause, revenir à la préparation.
+- L'écran principal occupe la hauteur disponible (dvh), sans défilement de page : caméra et Canvas se redimensionnent ensemble dans l'espace restant. Les réglages, instructions longues et informations de confidentialité sont dans le dialogue. Un défilement interne de secours reste possible dans le dialogue sur une fenêtre exceptionnellement petite ou à fort zoom, pour préserver l'accès aux réglages.
+- Vérification visuelle et géométrique aux dimensions 1194×834, 834×1194, 390×640 et 844×390 dans le navigateur de test. La caméra réelle et les barres Safari doivent être vérifiées sur l'appareil.
