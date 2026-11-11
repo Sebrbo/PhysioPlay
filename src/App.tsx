@@ -41,7 +41,7 @@ export default function App(){
   }
   function demo(){stop();setSource('demo');setZone(defaultZone);changePhase('ready');setMessage('Démonstration : déplace le pointeur ou ton doigt sur les cibles. Aucun suivi corporel.');}
   function calibrate(){runtime.current.samples=[];runtime.current.calibrationStart=performance.now();runtime.current.calibrationValid=0;setZone(null);changePhase('calibrating');setMessage('Pendant 8 secondes de suivi, balaie doucement ta zone confortable avec la ou les mains choisies.');}
-  function start(){const r=runtime.current;r.stats=initialStats(duration);r.active=0;r.targetAge=0;r.dwell=0;r.number=1;r.target=nextTarget(zone! ,null);setStats({...r.stats});changePhase('playing');setMessage('Atteins le centre de la cible avec le poignet.');}
+  function start(){if(!zone){changePhase('ready');setMessage('Calibre à nouveau la zone avant de commencer.');return;}const r=runtime.current;r.stats=initialStats(duration);r.active=0;r.targetAge=0;r.dwell=0;r.number=1;r.target=nextTarget(zone! ,null);setStats({...r.stats});changePhase('playing');setMessage('Atteins le centre de la cible avec le poignet.');}
   function finish(){changePhase('result');runtime.current.target=null;setStats({...runtime.current.stats});setMessage('Séance terminée. Les résultats restent uniquement en mémoire.');}
 
   useEffect(()=>{
