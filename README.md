@@ -39,7 +39,7 @@ Le service worker et le hors connexion se vérifient sur la version construite, 
 3. Autoriser puis activer la caméra. Aucune permission microphone demandée.
 4. Calibrer : balayer lentement l'espace confortable pendant huit secondes de suivi valide. La zone observée est réduite de 12 % par bord. Un suivi insuffisant est rejeté. Recalibrer après déplacement, changement de main ou rotation.
 5. Commencer. Thérapeutique : contact du poignet pendant 250 ms, sans délai par cible. Réactivité : contact pendant 80 ms avant expiration du délai réglé.
-6. Si les mains sélectionnées sortent du cadre, le temps de jeu et le délai de cible se figent. Masquer l'application déclenche une pause explicite. Arrêter la caméra libère ses pistes.
+6. Le chronomètre de séance continue même si les mains sélectionnées sortent du cadre. Seul le délai de cible est suspendu pendant la perte de suivi. La durée est mesurée en temps réel, indépendamment de la cadence vidéo. Le bouton Pause suspend explicitement la séance. Masquer l'application déclenche une pause explicite. Arrêter la caméra libère ses pistes.
 
 La calibration est une enveloppe rectangulaire en deux dimensions ; elle ne garantit pas que chaque position soit atteignable, et ne mesure ni angle, ni compensation, ni amplitude clinique. Régler la séance avec le thérapeute. Le temps moyen affiché est le temps d'atteinte des cibles réussies, incluant le maintien demandé ; ce n'est pas un temps de réaction clinique.
 
