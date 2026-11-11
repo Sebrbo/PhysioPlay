@@ -28,3 +28,17 @@ export function advanceSessionClock(activeMs:number, deltaMs:number, durationSec
   const elapsed=Math.min(limit,activeMs+Math.max(0,deltaMs));
   return {elapsed,remaining:Math.max(0,(limit-elapsed)/1000),done:elapsed>=limit};
 }
+
+export function scaleZone(zone:Zone, widthPercent:number, heightPercent:number):Zone {
+  const cx=(zone.left+zone.right)/2,cy=(zone.top+zone.bottom)/2;
+  const dx=(zone.right-zone.left)*widthPercent/200,dy=(zone.bottom-zone.top)*heightPercent/200;
+  return {left:Math.max(.02,cx-dx),right:Math.min(.98,cx+dx),top:Math.max(.02,cy-dy),bottom:Math.min(.98,cy+dy)};
+}
+export function containRect(width:number,height:number,aspect:number) {
+  const w=Math.min(width,height*aspect),h=w/aspect;
+  return {x:(width-w)/2,y:(height-h)/2,width:w,height:h};
+}
+export function insetZone(zone:Zone,radius:number,width:number,height:number):Zone {
+  const mx=Math.min(.49,(radius+9)/Math.max(1,width)),my=Math.min(.49,(radius+9)/Math.max(1,height));
+  return {left:Math.max(mx,Math.min(1-mx,zone.left)),right:Math.max(mx,Math.min(1-mx,zone.right)),top:Math.max(my,Math.min(1-my,zone.top)),bottom:Math.max(my,Math.min(1-my,zone.bottom))};
+}
