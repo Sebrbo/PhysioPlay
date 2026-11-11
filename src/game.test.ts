@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { containRect, insetZone, scaleZone, advanceSessionClock, calibratedZone, contains, mirror, nextTarget } from './game';
+import { advanceCountdown, containRect, insetZone, scaleZone, advanceSessionClock, calibratedZone, contains, mirror, nextTarget } from './game';
 test('miroir : le poignet et la vidéo partagent le même repère',()=>{assert.deepEqual(mirror({x:.2,y:.7}),{x:.8,y:.7});});
 test('collision en pixels même sur un écran non carré',()=>{assert.equal(contains({x:.55,y:.5},{x:.5,y:.5},40,1000,500),false);assert.equal(contains({x:.5,y:.55},{x:.5,y:.5},40,1000,500),true);});
 test('calibration rejette un suivi court ou immobile',()=>{assert.equal(calibratedZone([{x:.2,y:.2}]),null);assert.equal(calibratedZone(Array.from({length:100},()=>({x:.5,y:.5}))),null);});
@@ -18,3 +18,11 @@ test('une nouvelle séance démarre avec toute sa durée',()=>{assert.deepEqual(
 test('agrandir une zone conserve son centre et reste dans l’image',()=>{assert.deepEqual(scaleZone({left:.3,right:.7,top:.3,bottom:.7},150,50),{left:.2,right:.8,top:.4,bottom:.6});const z=scaleZone({left:.02,right:.98,top:.02,bottom:.98},150,150);assert.deepEqual(z,{left:.02,right:.98,top:.02,bottom:.98});});
 test('plein écran : vidéo et cibles gardent leur repère sans déformation',()=>{assert.deepEqual(containRect(1200,600,4/3),{x:200,y:0,width:800,height:600});assert.deepEqual(containRect(400,900,4/3),{x:0,y:300,width:400,height:300});});
 test('les cercles restent entièrement visibles près des bords',()=>{const z=insetZone({left:.02,right:.98,top:.02,bottom:.98},60,400,300);assert.ok(z.left*400>=69);assert.ok((1-z.right)*400>=69-1e-9);assert.ok(z.top*300>=69);});
+
+test('le départ attend cinq secondes sans consommer le temps de séance',()=>{
+  let remainingMs=5000;
+  for(let i=0;i<4;i++){const countdown=advanceCountdown(remainingMs,1000);assert.equal(countdown.done,false);assert.equal(countdown.seconds,4-i);remainingMs=countdown.remainingMs;}
+  assert.deepEqual(advanceCountdown(remainingMs,1000),{remainingMs:0,seconds:0,done:true});
+  assert.equal(advanceSessionClock(0,0,60).remaining,60);
+});
+test('le compte à rebours tolère un retard de rendu',()=>{assert.deepEqual(advanceCountdown(400,1200),{remainingMs:0,seconds:0,done:true});});

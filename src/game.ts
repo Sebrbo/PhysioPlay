@@ -42,3 +42,8 @@ export function insetZone(zone:Zone,radius:number,width:number,height:number):Zo
   const mx=Math.min(.49,(radius+9)/Math.max(1,width)),my=Math.min(.49,(radius+9)/Math.max(1,height));
   return {left:Math.max(mx,Math.min(1-mx,zone.left)),right:Math.max(mx,Math.min(1-mx,zone.right)),top:Math.max(my,Math.min(1-my,zone.top)),bottom:Math.max(my,Math.min(1-my,zone.bottom))};
 }
+
+export function advanceCountdown(remainingMs:number,deltaMs:number) {
+  const next=Math.max(0,remainingMs-Math.max(0,deltaMs));
+  return {remainingMs:next,seconds:Math.ceil(next/1000),done:next===0};
+}
