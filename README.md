@@ -1,12 +1,12 @@
-# PhysioPlay V0.1.5
+# PhysioPlay V0.1.6
 
 Bouger · Jouer · Progresser. Prototype de jeu de cibles avec caméra frontale, sans serveur applicatif.
 
 ## Architecture
 
 - React + TypeScript + Vite : interface responsive en français.
-- MediaPipe Hand Landmarker : deux mains au maximum, mode VIDEO, calcul local sur CPU ; inférence plafonnée à 20 Hz pour privilégier la réactivité de l’affichage. Le jeu de cibles utilise le modèle dédié aux mains ; les futurs jeux corporels pourront réintroduire Pose. L'inférence synchrone reste sur le fil principal dans cette V0.1 : mesurer la fluidité sur chaque appareil avant utilisation.
-- Vidéo et Canvas 2D : même repère normalisé, image et paumes en miroir. Affichage sans recadrage pendant la préparation ; recadrage cover partagé entre vidéo et cibles en plein écran. Le contact est le centre des cinq repères de paume 0, 5, 9, 13 et 17, pas le seul poignet.
+- MediaPipe Pose Landmarker Lite : une personne, mode VIDEO, calcul local sur CPU. Suivi des poignets rétabli après les essais caméra : c'est le mode actif de PhysioTargets.
+- Vidéo et Canvas 2D : poignets 15 (gauche) et 16 (droite), inversion pour l'affichage miroir et recadrage partagé avec la vidéo en plein écran. Aucun modèle de main ou filtrage de latéralité des mains dans la boucle de jeu active.
 - `src/game.ts` : géométrie, calibration et génération des cibles ; tests indépendants de la caméra.
 - `src/App.tsx` : acquisition vidéo, cycle de séance et affichage. États : préparation, calibration, jeu, pause, bilan.
 - `scripts/prepare-assets.mjs` : copie le moteur WASM du paquet épinglé et télécharge le modèle officiel version 1 au premier lancement/build. Les fichiers sont servis depuis le site, pas depuis un CDN pendant une séance.
@@ -38,7 +38,7 @@ Le service worker et le hors connexion se vérifient sur la version construite, 
 2. Choisir mode, main anatomique (gauche/droite du patient), durée et taille.
 3. Autoriser puis activer la caméra. Aucune permission microphone demandée.
 4. Calibrer : balayer lentement l'espace confortable pendant huit secondes de suivi valide. La zone observée est réduite de 12 % par bord. Un suivi insuffisant est rejeté. Recalibrer après déplacement, changement de main ou rotation.
-5. Commencer. Thérapeutique : contact de la paume pendant 250 ms, sans délai par cible. Réactivité : contact pendant 80 ms avant expiration du délai réglé.
+5. Commencer. Thérapeutique : contact du poignet pendant 250 ms, sans délai par cible. Réactivité : contact pendant 80 ms avant expiration du délai réglé.
 6. Le chronomètre de séance continue même si les mains sélectionnées sortent du cadre. Seul le délai de cible est suspendu pendant la perte de suivi. La durée est mesurée en temps réel, indépendamment de la cadence vidéo. Le bouton Pause suspend explicitement la séance. Masquer l'application déclenche une pause explicite. Arrêter la caméra libère ses pistes.
 
 La calibration est une enveloppe rectangulaire en deux dimensions ; elle ne garantit pas que chaque position soit atteignable, et ne mesure ni angle, ni compensation, ni amplitude clinique. Régler la séance avec le thérapeute. Le temps moyen affiché est le temps d'atteinte des cibles réussies, incluant le maintien demandé ; ce n'est pas un temps de réaction clinique.
@@ -116,3 +116,9 @@ Références : [MediaPipe Hands Web](https://ai.google.dev/edge/mediapipe/soluti
 - Inférence limitée à 20 Hz ; la disparition efface les positions plutôt que de revenir silencieusement aux poignets. Le temps de séance continue à dépendre du temps réel.
 - Tests : 20 tests de logique ; chargement réel du moteur WASM et du modèle CPU dans le navigateur ; détection d'une main à 21 repères sur une image fournie, choisie via un sélecteur et traitée uniquement en mémoire locale. L'image n'est pas incluse dans le projet ou la publication.
 - À valider sur iPad : fluidité en vidéo, distances d'utilisation, mains ouvertes/fermées, sélection anatomique gauche/droite et mains qui se croisent. Refaire la calibration après cette mise à jour, le point de contact ayant changé.
+
+## Mise à jour 0.1.6 — retour aux poignets
+
+Les essais sur iPad ont montré des pertes régulières avec le modèle dédié aux mains. Retour au modèle Pose Landmarker Lite et aux points 15 et 16, avec les paramètres de détection validés avant la version 0.1.5 : calcul à chaque nouvelle image vidéo, seuil de visibilité > 0,65 et expiration des positions à 300 ms si le flux cesse de progresser. Une pose sans poignets valides efface les points immédiatement. La logique expérimentale de paume reste dans `src/hands.ts` pour de futurs essais, sans être importée par l'application ni chargée dans le jeu.
+
+Plein écran automatique au démarrage, décompte de cinq secondes, calibration au format de préparation, zone à 150 % et interface immersive conservés. Refaire la calibration, le contact revenant au poignet. Le suivi précis des mains pourra être testé séparément avant d'être réintroduit.
