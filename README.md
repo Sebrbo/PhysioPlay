@@ -1,4 +1,4 @@
-# PhysioPlay V0.1.3
+# PhysioPlay V0.1.4
 
 Bouger · Jouer · Progresser. Prototype de jeu de cibles avec caméra frontale, sans serveur applicatif.
 
@@ -96,3 +96,12 @@ Références : [MediaPipe Web](https://ai.google.dev/edge/mediapipe/solutions/vi
 - Un bouton Réglages ouvre un dialogue avec trois onglets : Séance, Zone des cibles, À propos. Il est verrouillé pendant calibration, départ, jeu ou pause. Pour modifier après une pause, revenir à la préparation.
 - L'écran principal occupe la hauteur disponible (dvh), sans défilement de page : caméra et Canvas se redimensionnent ensemble dans l'espace restant. Les réglages, instructions longues et informations de confidentialité sont dans le dialogue. Un défilement interne de secours reste possible dans le dialogue sur une fenêtre exceptionnellement petite ou à fort zoom, pour préserver l'accès aux réglages.
 - Vérification visuelle et géométrique aux dimensions 1194×834, 834×1194, 390×640 et 844×390 dans le navigateur de test. La caméra réelle et les barres Safari doivent être vérifiées sur l'appareil.
+
+## Mise à jour 0.1.4 — vidéo immersive
+
+- En plein écran, suppression des barres de titre, de préparation, de statistiques et de statut. La vidéo et son Canvas occupent toute la surface.
+- Vidéo en mode cover : conserve ses proportions et recadre les bords pour éviter les bandes. Le repère des poignets, des cibles et du pointeur de démonstration suit exactement ce même recadrage.
+- Seuls le chrono et le nombre de cibles sont incrustés, avec deux boutons flottants pendant le jeu : Pause et Retour. Le temps moyen reste au bilan final.
+- Retour arrête la séance en cours et ramène à la préparation en gardant la caméra active. Revenir à la préparation depuis la pause ou le bilan quitte aussi le plein écran.
+- Le cadre de zone est masqué pendant le jeu immersif. Les cibles restent dans la portion visible du flux, hors de la bande de commandes du haut. Le décompte de cinq secondes et les commandes de préparation restent disponibles avant le jeu.
+- La perte de suivi affiche une petite indication discrète, sans masquer l'image sous un panneau opaque. Le système d'exploitation peut conserver ses propres indicateurs caméra et sa barre de statut.
