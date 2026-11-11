@@ -47,3 +47,16 @@ export function advanceCountdown(remainingMs:number,deltaMs:number) {
   const next=Math.max(0,remainingMs-Math.max(0,deltaMs));
   return {remainingMs:next,seconds:Math.ceil(next/1000),done:next===0};
 }
+
+export function coverRect(width:number,height:number,aspect:number) {
+  const w=Math.max(width,height*aspect),h=w/aspect;
+  return {x:(width-w)/2,y:(height-h)/2,width:w,height:h};
+}
+// Restreint les centres aux parties réellement visibles de la vidéo recadrée.
+export function visibleTargetZone(zone:Zone,radius:number,viewportWidth:number,viewportHeight:number,fit:ReturnType<typeof coverRect>,topInset=0):Zone {
+  const margin=radius+9;
+  const left=Math.max(0,(-fit.x+margin)/fit.width),right=Math.min(1,(viewportWidth-fit.x-margin)/fit.width);
+  const top=Math.max(0,(-fit.y+margin+topInset)/fit.height),bottom=Math.min(1,(viewportHeight-fit.y-margin)/fit.height);
+  const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
+  return {left:clamp(zone.left,left,right),right:clamp(zone.right,left,right),top:clamp(zone.top,top,bottom),bottom:clamp(zone.bottom,top,bottom)};
+}

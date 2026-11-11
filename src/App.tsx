@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
-import { advanceCountdown, containRect, insetZone, scaleZone, advanceSessionClock, calibratedZone, contains, defaultZone, mirror, nextTarget, type Hand, type Point, type Zone } from './game';
+import { coverRect, visibleTargetZone, advanceCountdown, containRect, insetZone, scaleZone, advanceSessionClock, calibratedZone, contains, defaultZone, mirror, nextTarget, type Hand, type Point, type Zone } from './game';
 
 type Phase = 'idle'|'ready'|'countdown'|'calibrating'|'playing'|'paused'|'result';
 type Stats = { hits:number; misses:number; times:number[]; remaining:number };
@@ -10,6 +10,7 @@ export default function App(){
   const [immersive,setImmersive]=useState(false);
   const [zoneWidth,setZoneWidth]=useState(150),[zoneHeight,setZoneHeight]=useState(150);
   const play=useRef<HTMLElement>(null);
+  const hud=useRef<HTMLDivElement>(null);
   const settingsDialog=useRef<HTMLDialogElement>(null);
   const [settingsOpen,setSettingsOpen]=useState(false),[settingsTab,setSettingsTab]=useState<'session'|'zone'|'about'>('session');
   const [countdown,setCountdown]=useState(5);
@@ -23,8 +24,8 @@ export default function App(){
   const video=useRef<HTMLVideoElement>(null),canvas=useRef<HTMLCanvasElement>(null),stage=useRef<HTMLDivElement>(null);
   const stream=useRef<MediaStream|null>(null),detector=useRef<PoseLandmarker|null>(null),generation=useRef(0);
   const effectiveZone=zone?scaleZone(zone,zoneWidth,zoneHeight):null;
-  const state=useRef({phase,source,mode,hand,duration,deadline,size,zone:effectiveZone});
-  state.current={phase,source,mode,hand,duration,deadline,size,zone:effectiveZone};
+  const state=useRef({phase,source,mode,hand,duration,deadline,size,zone:effectiveZone,immersive});
+  state.current={phase,source,mode,hand,duration,deadline,size,zone:effectiveZone,immersive};
   const runtime=useRef({target:null as Point|null,hands:[] as Point[],samples:[] as Point[],calibrationStart:0,calibrationValid:0,last:0,lastSeen:0,lastVideo:-1,countdownMs:5000,active:0,targetAge:0,dwell:0,stats:initialStats(60),number:1,pointer:null as Point|null});
   const changePhase=(p:Phase)=>{runtime.current.last=performance.now();state.current.phase=p;setPhase(p);};
   const stop=()=>{generation.current++;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;detector.current?.close();detector.current=null;if(video.current)video.current.srcObject=null;runtime.current.hands=[];runtime.current.target=null;setTracking(false);setSource(null);setZone(null);changePhase('idle');setBusy(false);};
@@ -47,9 +48,14 @@ export default function App(){
     // Le mode immersif reste disponible si Safari ne propose pas l'API plein écran.
     try{await play.current?.requestFullscreen?.();}catch{/* affichage sur toute la fenêtre */}
   }
+  async function backToPreparation(){
+    if(state.current.phase!=='idle'){changePhase('ready');runtime.current.target=null;setMessage('Retour à la préparation. La caméra reste active.');}
+    if(document.fullscreenElement)await document.exitFullscreen().catch(()=>{});
+    setImmersive(false);
+  }
   function demoPointer(e:React.PointerEvent<HTMLDivElement>){
     if(source!=='demo')return;
-    const b=e.currentTarget.getBoundingClientRect(),fit=containRect(b.width,b.height,4/3);
+    const b=e.currentTarget.getBoundingClientRect(),fit=(immersive?coverRect:containRect)(b.width,b.height,4/3);
     const x=(e.clientX-b.left-fit.x)/fit.width,y=(e.clientY-b.top-fit.y)/fit.height;
     runtime.current.pointer=x>=0&&x<=1&&y>=0&&y<=1?{x,y}:null;
   }
@@ -84,9 +90,10 @@ export default function App(){
       const el=canvas.current,v=video.current;if(!el||!v){raf=requestAnimationFrame(frame);return;}
       const ctx=el.getContext('2d')!;const outerW=el.clientWidth,outerH=el.clientHeight,dpr=Math.min(window.devicePixelRatio||1,2);
       if(el.width!==Math.round(outerW*dpr)||el.height!==Math.round(outerH*dpr)){el.width=Math.round(outerW*dpr);el.height=Math.round(outerH*dpr);}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,outerW,outerH);
-      const fit=containRect(outerW,outerH,s.source==='camera'&&v.videoWidth?v.videoWidth/v.videoHeight:4/3);
+      const fit=(s.immersive?coverRect:containRect)(outerW,outerH,s.source==='camera'&&v.videoWidth?v.videoWidth/v.videoHeight:4/3);
       const w=fit.width,h=fit.height;ctx.translate(fit.x,fit.y);
-      const targetZone=s.zone?insetZone(s.zone,s.size,w,h):null;
+      const hudInset=hud.current?hud.current.offsetTop+hud.current.offsetHeight:76;
+      const targetZone=s.zone?(s.immersive?visibleTargetZone(s.zone,s.size,outerW,outerH,fit,hudInset):insetZone(s.zone,s.size,w,h)):null;
       if(r.target&&targetZone){r.target={x:Math.max(targetZone.left,Math.min(targetZone.right,r.target.x)),y:Math.max(targetZone.top,Math.min(targetZone.bottom,r.target.y))};}
       if(s.source==='camera'&&detector.current&&v.readyState>=2&&v.currentTime!==r.lastVideo){
         r.lastVideo=v.currentTime;
@@ -120,7 +127,7 @@ export default function App(){
         }else{r.dwell=0;}
         setStats({...r.stats,times:[...r.stats.times]});
       }
-      const z=targetZone;if(z){ctx.strokeStyle='#50d5c570';ctx.lineWidth=2;ctx.setLineDash([8,8]);ctx.strokeRect(z.left*w,z.top*h,(z.right-z.left)*w,(z.bottom-z.top)*h);ctx.setLineDash([]);}
+      const z=targetZone;if(z&&(!s.immersive||s.phase==='ready'||s.phase==='calibrating')){ctx.strokeStyle='#50d5c570';ctx.lineWidth=2;ctx.setLineDash([8,8]);ctx.strokeRect(z.left*w,z.top*h,(z.right-z.left)*w,(z.bottom-z.top)*h);ctx.setLineDash([]);}
       if(r.target&&['playing','paused'].includes(s.phase)){
         const x=r.target.x*w,y=r.target.y*h;ctx.shadowColor='#51e4c6';ctx.shadowBlur=25;ctx.fillStyle='#46d4b9';ctx.beginPath();ctx.arc(x,y,s.size,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
         ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(x,y,s.size+7,-Math.PI/2,-Math.PI/2+Math.PI*2*(s.mode==='reaction'?Math.max(0,1-r.targetAge/(s.deadline*1000)):1));ctx.stroke();ctx.fillStyle='#0b3040';ctx.font='bold 27px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(r.number),x,y);
@@ -133,7 +140,7 @@ export default function App(){
   const locked=busy||['playing','paused','countdown','calibrating'].includes(phase);
   const mean=stats.times.length?`${(stats.times.reduce((a,b)=>a+b,0)/stats.times.length/1000).toFixed(2)} s`:'—';
   return <div className="app">
-    <header><a className="brand" href="./"><span className="brand-icon">◎</span> Physio<span>Play</span></a><span className="version">V0.1.3 <i/> Traitement local</span></header>
+    <header><a className="brand" href="./"><span className="brand-icon">◎</span> Physio<span>Play</span></a><span className="version">V0.1.4 <i/> Traitement local</span></header>
     <main><section ref={play} className={`play ${immersive?'immersive':''}`} aria-label="Espace de jeu PhysioTargets">
       <div className="play-top"><div className="game-title"><strong>PhysioTargets</strong><span>{source==='demo'?'Démonstration':source==='camera'?(tracking?'● Poignet détecté':'○ En attente de suivi'):'Caméra désactivée'}</span></div>
       <div className="top-actions"><button disabled={locked} onClick={()=>setSettingsOpen(true)}>⚙ Réglages</button><button onClick={toggleFullscreen}>{immersive?'↙ Quitter le plein écran':'⛶ Plein écran'}</button></div></div>
@@ -147,14 +154,20 @@ export default function App(){
       </div></div>
     <div className="stage" ref={stage} style={{aspectRatio:source==='camera'&&video.current?.videoWidth?`${video.current.videoWidth}/${video.current.videoHeight}`:'4/3'}} onPointerMove={demoPointer} onPointerLeave={()=>runtime.current.pointer=null} onPointerDown={demoPointer} onPointerUp={()=>{runtime.current.pointer=null;}}>
     <video ref={video} muted playsInline aria-label="Retour de la caméra en miroir"/><canvas ref={canvas} aria-label="Cibles et position des poignets"/>
+    {immersive&&<>
+      <div className="immersive-hud" ref={hud}><div className="hud-stats" aria-label="Score et chronomètre"><div><span>CIBLES</span><strong>{String(stats.hits).padStart(2,'0')}</strong></div><div><span>CHRONO</span><strong>{Math.ceil(['ready','idle','countdown'].includes(phase)?duration:stats.remaining)}<small> s</small></strong></div></div>
+      <div className="hud-actions"><button aria-label="Retour à la préparation" onClick={backToPreparation}>← Retour</button>{phase==='playing'&&<button onClick={()=>changePhase('paused')}>Ⅱ Pause</button>}</div></div>
+      {!locked&&phase!=='result'&&<div className="immersive-prepare">{!source?<button onClick={backToPreparation}>Préparer la caméra</button>:zone?<button className="primary" onClick={start}>Commencer · départ dans 5 s</button>:<button onClick={calibrate}>Calibrer · 8 s</button>}</div>}
+    </>}
+
     {!source&&<div className="welcome"><div className="target-icon">◎</div><h2>Un peu de mouvement.<br/>Beaucoup de possibilités.</h2><p>Active la caméra et retrouve-toi<br/>au centre du jeu.</p><span>CAMÉRA FRONTALE · SANS CAPTEUR</span></div>}
     {phase==='countdown'&&<div className="overlay countdown-overlay" aria-live="polite"><p>PRÊT À JOUER ?</p><strong className="countdown-number">{countdown}</strong><p>Place-toi confortablement. Le chrono démarrera après le décompte.</p><button onClick={()=>{changePhase('ready');setMessage('Départ annulé.');}}>Annuler le départ</button></div>}
-    {phase==='playing'&&!tracking&&<div className="overlay"><h2>Main hors du cadre</h2><p>Replace les mains dans le cadre. La séance continue.</p></div>}
-    {phase==='paused'&&<div className="overlay"><h2>Une pause pour souffler.</h2><button className="primary" disabled={!zone} onClick={()=>changePhase('playing')}>Reprendre</button><button onClick={()=>{changePhase('ready');runtime.current.target=null;}}>Revenir à la préparation</button></div>}
-    {phase==='result'&&<div className="overlay result"><p className="eyebrow">SÉANCE TERMINÉE</p><h2>{stats.hits} cibles atteintes</h2><p>Temps moyen d’atteinte : {mean}<br/>{mode==='reaction'?`${stats.misses} cibles expirées`:'Chaque mouvement compte.'}</p><button className="primary" onClick={start}>Rejouer</button><button onClick={()=>changePhase('ready')}>Modifier la séance</button></div>}
-    {phase==='playing'&&tracking&&<span className="stage-hint">{mode==='therapy'?'Maintiens le poignet sur la cible · ¼ s':'Touche la cible avant la fin du cercle'}</span>}
+    {phase==='playing'&&!tracking&&<div className="tracking-notice" role="status">Replace les mains dans le cadre · la séance continue</div>}
+    {phase==='paused'&&<div className="overlay"><h2>Une pause pour souffler.</h2><button className="primary" disabled={!zone} onClick={()=>changePhase('playing')}>Reprendre</button><button onClick={backToPreparation}>Revenir à la préparation</button></div>}
+    {phase==='result'&&<div className="overlay result"><p className="eyebrow">SÉANCE TERMINÉE</p><h2>{stats.hits} cibles atteintes</h2><p>Temps moyen d’atteinte : {mean}<br/>{mode==='reaction'?`${stats.misses} cibles expirées`:'Chaque mouvement compte.'}</p><button className="primary" onClick={start}>Rejouer</button><button onClick={backToPreparation}>Modifier la séance</button></div>}
+    {!immersive&&phase==='playing'&&tracking&&<span className="stage-hint">{mode==='therapy'?'Maintiens le poignet sur la cible · ¼ s':'Touche la cible avant la fin du cercle'}</span>}
 
-      </div><div className="metrics"><div><span>CIBLES</span><strong>{String(stats.hits).padStart(2,'0')}</strong></div><div><span>TEMPS RESTANT</span><strong>{Math.ceil(['ready','idle','countdown'].includes(phase)?duration:stats.remaining)}<small> s</small></strong></div><div><span>TEMPS MOYEN</span><strong>{mean}</strong></div>
+      </div><div className="metrics"><div><span>CIBLES</span><strong>{String(stats.hits).padStart(2,'0')}</strong></div><div><span>TEMPS RESTANT</span><strong>{Math.ceil(['ready','idle','countdown'].includes(phase)?duration:stats.remaining)}<small> s</small></strong></div>
       <div className="game-actions">{phase==='playing'&&<button onClick={()=>changePhase('paused')}>Ⅱ Pause</button>}{phase==='countdown'&&<button onClick={()=>{changePhase('ready');setMessage('Départ annulé.');}}>Annuler</button>}{(phase==='playing'||phase==='paused')&&<button onClick={finish}>Terminer</button>}</div></div>
       <p className="status" role="status">{message}</p>
       <dialog ref={settingsDialog} className="settings-dialog" aria-labelledby="settings-title" onCancel={()=>setSettingsOpen(false)} onClose={()=>setSettingsOpen(false)}>

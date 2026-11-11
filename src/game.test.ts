@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { advanceCountdown, containRect, insetZone, scaleZone, advanceSessionClock, calibratedZone, contains, mirror, nextTarget } from './game';
+import { coverRect, visibleTargetZone, advanceCountdown, containRect, insetZone, scaleZone, advanceSessionClock, calibratedZone, contains, mirror, nextTarget } from './game';
 test('miroir : le poignet et la vidéo partagent le même repère',()=>{assert.deepEqual(mirror({x:.2,y:.7}),{x:.8,y:.7});});
 test('collision en pixels même sur un écran non carré',()=>{assert.equal(contains({x:.55,y:.5},{x:.5,y:.5},40,1000,500),false);assert.equal(contains({x:.5,y:.55},{x:.5,y:.5},40,1000,500),true);});
 test('calibration rejette un suivi court ou immobile',()=>{assert.equal(calibratedZone([{x:.2,y:.2}]),null);assert.equal(calibratedZone(Array.from({length:100},()=>({x:.5,y:.5}))),null);});
@@ -26,3 +26,6 @@ test('le départ attend cinq secondes sans consommer le temps de séance',()=>{
   assert.equal(advanceSessionClock(0,0,60).remaining,60);
 });
 test('le compte à rebours tolère un retard de rendu',()=>{assert.deepEqual(advanceCountdown(400,1200),{remainingMs:0,seconds:0,done:true});});
+
+test('vidéo immersive : recadrer sans bandes ni déformation',()=>{assert.deepEqual(coverRect(1200,600,4/3),{x:0,y:-150,width:1200,height:900});const portrait=coverRect(400,900,4/3);assert.equal(portrait.height,900);assert.equal(portrait.width,1200);assert.equal(portrait.x,-400);});
+test('les cibles du plein écran restent visibles après recadrage et sous les commandes',()=>{for(const [width,height] of [[1200,600],[400,900],[844,390]]){const fit=coverRect(width,height,4/3),z=visibleTargetZone({left:.02,right:.98,top:.02,bottom:.98},48,width,height,fit,76);for(let i=0;i<100;i++){const p=nextTarget(z,null);const x=fit.x+p.x*fit.width,y=fit.y+p.y*fit.height;assert.ok(x>=57-1e-6&&x<=width-57+1e-6);assert.ok(y>=133-1e-6&&y<=height-57+1e-6);}}});
