@@ -20,3 +20,11 @@ export function nextTarget(zone:Zone, previous:Point | null, random= Math.random
   for(let i=0;i<20;i++){p={x:zone.left+random()*(zone.right-zone.left),y:zone.top+random()*(zone.bottom-zone.top)};if(!previous || Math.hypot(p.x-previous.x,p.y-previous.y)>.18)break;}
   return p;
 }
+
+// Le temps de séance suit le temps réellement écoulé, sans dépendre du suivi
+// ni de la cadence de rendu. Appeler uniquement pendant la phase de jeu.
+export function advanceSessionClock(activeMs:number, deltaMs:number, durationSeconds:number) {
+  const limit=durationSeconds*1000;
+  const elapsed=Math.min(limit,activeMs+Math.max(0,deltaMs));
+  return {elapsed,remaining:Math.max(0,(limit-elapsed)/1000),done:elapsed>=limit};
+}
