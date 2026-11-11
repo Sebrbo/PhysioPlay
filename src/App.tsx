@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { selectPalms, smoothPalms, type Palm } from './hands';
-import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
-import { coverRect, visibleTargetZone, advanceCountdown, containRect, insetZone, scaleZone, advanceSessionClock, calibratedZone, contains, defaultZone, nextTarget, type Hand, type Point, type Zone } from './game';
+import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
+import { coverRect, visibleTargetZone, advanceCountdown, containRect, insetZone, scaleZone, advanceSessionClock, calibratedZone, contains, defaultZone, poseWrists, nextTarget, type Hand, type Point, type Zone } from './game';
 
 type Phase = 'idle'|'ready'|'countdown'|'calibrating'|'playing'|'paused'|'result';
 type Stats = { hits:number; misses:number; times:number[]; remaining:number };
@@ -23,13 +22,13 @@ export default function App(){
   const [tracking,setTracking]=useState(false),[zone,setZone]=useState<Zone|null>(null);
   const [stats,setStats]=useState(initialStats(60)),[consent,setConsent]=useState(false);
   const video=useRef<HTMLVideoElement>(null),canvas=useRef<HTMLCanvasElement>(null),stage=useRef<HTMLDivElement>(null);
-  const stream=useRef<MediaStream|null>(null),detector=useRef<HandLandmarker|null>(null),generation=useRef(0);
+  const stream=useRef<MediaStream|null>(null),detector=useRef<PoseLandmarker|null>(null),generation=useRef(0);
   const effectiveZone=zone?scaleZone(zone,zoneWidth,zoneHeight):null;
   const state=useRef({phase,source,mode,hand,duration,deadline,size,zone:effectiveZone,immersive});
   state.current={phase,source,mode,hand,duration,deadline,size,zone:effectiveZone,immersive};
-  const runtime=useRef({target:null as Point|null,hands:[] as Point[],palms:[] as Palm[],lastInference:0,samples:[] as Point[],calibrationStart:0,calibrationValid:0,last:0,lastSeen:0,lastVideo:-1,countdownMs:5000,active:0,targetAge:0,dwell:0,stats:initialStats(60),number:1,pointer:null as Point|null});
+  const runtime=useRef({target:null as Point|null,hands:[] as Point[],samples:[] as Point[],calibrationStart:0,calibrationValid:0,last:0,lastSeen:0,lastVideo:-1,countdownMs:5000,active:0,targetAge:0,dwell:0,stats:initialStats(60),number:1,pointer:null as Point|null});
   const changePhase=(p:Phase)=>{runtime.current.last=performance.now();state.current.phase=p;setPhase(p);};
-  const stop=()=>{generation.current++;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;detector.current?.close();detector.current=null;if(video.current)video.current.srcObject=null;runtime.current.hands=[];runtime.current.palms=[];runtime.current.target=null;setTracking(false);setSource(null);setZone(null);changePhase('idle');setBusy(false);};
+  const stop=()=>{generation.current++;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;detector.current?.close();detector.current=null;if(video.current)video.current.srcObject=null;runtime.current.hands=[];runtime.current.target=null;setTracking(false);setSource(null);setZone(null);changePhase('idle');setBusy(false);};
   useEffect(()=>()=>{generation.current++;stream.current?.getTracks().forEach(t=>t.stop());detector.current?.close();},[]);
   useEffect(()=>{const hidden=()=>{if(document.hidden&&state.current.phase==='countdown'){changePhase('ready');setMessage('Départ annulé : l’application a été masquée.');}if(document.hidden && ['playing','calibrating'].includes(state.current.phase)){changePhase('paused');setMessage('Séance en pause : l’application a été masquée.');}};document.addEventListener('visibilitychange',hidden);return()=>document.removeEventListener('visibilitychange',hidden);},[]);
   useEffect(()=>{const resize=()=>{if(state.current.phase==='countdown'){changePhase('ready');setMessage('Affichage modifié : calibre à nouveau avant de commencer.');}if(['playing','calibrating'].includes(state.current.phase)){changePhase('paused');setMessage('Affichage modifié : recalibre avant de reprendre.');}setZone(null);};window.addEventListener('orientationchange',resize);return()=>window.removeEventListener('orientationchange',resize);},[]);
@@ -69,8 +68,8 @@ export default function App(){
       if(id!==generation.current){media.getTracks().forEach(t=>t.stop());return;}stream.current=media;
       video.current!.srcObject=media;await video.current!.play();
       const files=await FilesetResolver.forVisionTasks(`${import.meta.env.BASE_URL}mediapipe/wasm`);
-      const model=await HandLandmarker.createFromOptions(files,{baseOptions:{modelAssetPath:`${import.meta.env.BASE_URL}mediapipe/hand_landmarker.task`,delegate:'CPU'},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.6,minTrackingConfidence:.6,minHandPresenceConfidence:.6});
-      if(id!==generation.current){model.close();return;}detector.current=model;runtime.current.lastVideo=-1;runtime.current.lastInference=0;runtime.current.palms=[];setSource('camera');setZone(null);changePhase('ready');setMessage('Cadre le haut du corps et les mains. Lance ensuite la calibration.');
+      const model=await PoseLandmarker.createFromOptions(files,{baseOptions:{modelAssetPath:`${import.meta.env.BASE_URL}mediapipe/pose_landmarker_lite.task`,delegate:'CPU'},runningMode:'VIDEO',numPoses:1,minPoseDetectionConfidence:.6,minTrackingConfidence:.6,minPosePresenceConfidence:.6});
+      if(id!==generation.current){model.close();return;}detector.current=model;runtime.current.lastVideo=-1;setSource('camera');setZone(null);changePhase('ready');setMessage('Cadre le haut du corps et les mains. Lance ensuite la calibration.');
       media.getVideoTracks()[0].addEventListener('ended',()=>{if(id===generation.current){stop();setMessage('Caméra déconnectée. Active-la à nouveau.');}});
     }catch(e){if(id===generation.current){stop();setMessage(e instanceof DOMException && e.name==='NotAllowedError'?'Accès caméra refusé. Autorise la caméra dans les réglages du navigateur, puis réessaie.':`Caméra indisponible : ${e instanceof Error?e.message:'erreur inconnue'}`);}}
     finally{if(id===generation.current)setBusy(false);}
@@ -97,16 +96,13 @@ export default function App(){
       const hudInset=hud.current?hud.current.offsetTop+hud.current.offsetHeight:76;
       const targetZone=s.zone?(s.immersive?visibleTargetZone(s.zone,s.size,outerW,outerH,fit,hudInset):insetZone(s.zone,s.size,w,h)):null;
       if(r.target&&targetZone){r.target={x:Math.max(targetZone.left,Math.min(targetZone.right,r.target.x)),y:Math.max(targetZone.top,Math.min(targetZone.bottom,r.target.y))};}
-      if(s.source==='camera'&&detector.current&&v.readyState>=2&&v.currentTime!==r.lastVideo&&now-r.lastInference>=50){
+      if(s.source==='camera'&&detector.current&&v.readyState>=2&&v.currentTime!==r.lastVideo){
         r.lastVideo=v.currentTime;
-        r.lastInference=now;
         try{const result=detector.current.detectForVideo(v,now);
-          const palms=selectPalms(result.landmarks,result.handedness,s.hand);
-          r.palms=smoothPalms(palms,now-r.lastSeen<200?r.palms:[]);
-          r.hands=r.palms.map(p=>p.point);if(r.hands.length)r.lastSeen=now;
+          r.hands=poseWrists(result.landmarks[0],s.hand);if(r.hands.length)r.lastSeen=now;
         }catch{changePhase('paused');setMessage('Le suivi a été interrompu. Arrête puis réactive la caméra.');r.hands=[];}
       }
-      if(s.source==='camera'&&now-r.lastSeen>200){r.hands=[];r.palms=[];}
+      if(s.source==='camera'&&now-r.lastSeen>300){r.hands=[];}
       if(s.source==='demo')r.hands=r.pointer?[r.pointer]:[];
       const valid=r.hands.length>0;setTracking(previous=>previous===valid?previous:valid);
       if(s.phase==='calibrating'){
@@ -117,7 +113,7 @@ export default function App(){
       }
       if(s.phase==='countdown'){
         const clock=advanceCountdown(r.countdownMs,elapsed);r.countdownMs=clock.remainingMs;setCountdown(clock.seconds);
-        if(clock.done){if(targetZone){r.target=nextTarget(targetZone,null);changePhase('playing');setMessage('Atteins le centre de la cible avec la paume.');}else{changePhase('ready');setMessage('Calibre la zone avant de commencer.');}}
+        if(clock.done){if(targetZone){r.target=nextTarget(targetZone,null);changePhase('playing');setMessage('Atteins le centre de la cible avec le poignet.');}else{changePhase('ready');setMessage('Calibre la zone avant de commencer.');}}
       }
       else if(s.phase==='playing'){
         const clock=advanceSessionClock(r.active,elapsed,s.duration);
@@ -145,9 +141,9 @@ export default function App(){
   const locked=busy||['playing','paused','countdown','calibrating'].includes(phase);
   const mean=stats.times.length?`${(stats.times.reduce((a,b)=>a+b,0)/stats.times.length/1000).toFixed(2)} s`:'—';
   return <div className="app">
-    <header><a className="brand" href="./"><span className="brand-icon">◎</span> Physio<span>Play</span></a><span className="version">V0.1.5 <i/> Traitement local</span></header>
+    <header><a className="brand" href="./"><span className="brand-icon">◎</span> Physio<span>Play</span></a><span className="version">V0.1.6 <i/> Traitement local</span></header>
     <main><section ref={play} className={`play ${immersive?'immersive':''}`} aria-label="Espace de jeu PhysioTargets">
-      <div className="play-top"><div className="game-title"><strong>PhysioTargets</strong><span>{source==='demo'?'Démonstration':source==='camera'?(tracking?'● Main détectée':'○ En attente de suivi'):'Caméra désactivée'}</span></div>
+      <div className="play-top"><div className="game-title"><strong>PhysioTargets</strong><span>{source==='demo'?'Démonstration':source==='camera'?(tracking?'● Poignet détecté':'○ En attente de suivi'):'Caméra désactivée'}</span></div>
       <div className="top-actions"><button disabled={locked} onClick={()=>setSettingsOpen(true)}>⚙ Réglages</button><button onClick={toggleFullscreen}>{immersive?'↙ Quitter le plein écran':'⛶ Plein écran'}</button></div></div>
       <div className="setup-toolbar">
       <span className="session-summary">{mode==='therapy'?'Thérapeutique':'Réactivité'} · {duration} s · zone {zoneWidth} × {zoneHeight} %</span>
@@ -158,7 +154,7 @@ export default function App(){
       <button onClick={stop}>Arrêter {source==='camera'?'la caméra':'la démo'}</button></>}
       </div></div>
     <div className="stage" ref={stage} style={{aspectRatio:source==='camera'&&video.current?.videoWidth?`${video.current.videoWidth}/${video.current.videoHeight}`:'4/3'}} onPointerMove={demoPointer} onPointerLeave={()=>runtime.current.pointer=null} onPointerDown={demoPointer} onPointerUp={()=>{runtime.current.pointer=null;}}>
-    <video ref={video} muted playsInline aria-label="Retour de la caméra en miroir"/><canvas ref={canvas} aria-label="Cibles et position des paumes"/>
+    <video ref={video} muted playsInline aria-label="Retour de la caméra en miroir"/><canvas ref={canvas} aria-label="Cibles et position des poignets"/>
     {immersive&&<>
       <div className="immersive-hud" ref={hud}><div className="hud-stats" aria-label="Score et chronomètre"><div><span>CIBLES</span><strong>{String(stats.hits).padStart(2,'0')}</strong></div><div><span>CHRONO</span><strong>{Math.ceil(['ready','idle','countdown'].includes(phase)?duration:stats.remaining)}<small> s</small></strong></div></div>
       <div className="hud-actions"><button aria-label="Retour à la préparation" onClick={backToPreparation}>← Retour</button>{phase==='playing'&&<button onClick={()=>changePhase('paused')}>Ⅱ Pause</button>}</div></div>
@@ -170,7 +166,7 @@ export default function App(){
     {phase==='playing'&&!tracking&&<div className="tracking-notice" role="status">Replace les mains dans le cadre · la séance continue</div>}
     {phase==='paused'&&<div className="overlay"><h2>Une pause pour souffler.</h2><button className="primary" disabled={!zone} onClick={()=>changePhase('playing')}>Reprendre</button><button onClick={backToPreparation}>Revenir à la préparation</button></div>}
     {phase==='result'&&<div className="overlay result"><p className="eyebrow">SÉANCE TERMINÉE</p><h2>{stats.hits} cibles atteintes</h2><p>Temps moyen d’atteinte : {mean}<br/>{mode==='reaction'?`${stats.misses} cibles expirées`:'Chaque mouvement compte.'}</p><button className="primary" onClick={start}>Rejouer</button><button onClick={backToPreparation}>Modifier la séance</button></div>}
-    {!immersive&&phase==='playing'&&tracking&&<span className="stage-hint">{mode==='therapy'?'Maintiens la paume sur la cible · ¼ s':'Touche la cible avant la fin du cercle'}</span>}
+    {!immersive&&phase==='playing'&&tracking&&<span className="stage-hint">{mode==='therapy'?'Maintiens le poignet sur la cible · ¼ s':'Touche la cible avant la fin du cercle'}</span>}
 
       </div><div className="metrics"><div><span>CIBLES</span><strong>{String(stats.hits).padStart(2,'0')}</strong></div><div><span>TEMPS RESTANT</span><strong>{Math.ceil(['ready','idle','countdown'].includes(phase)?duration:stats.remaining)}<small> s</small></strong></div>
       <div className="game-actions">{phase==='playing'&&<button onClick={()=>changePhase('paused')}>Ⅱ Pause</button>}{phase==='countdown'&&<button onClick={()=>{changePhase('ready');setMessage('Départ annulé.');}}>Annuler</button>}{(phase==='playing'||phase==='paused')&&<button onClick={finish}>Terminer</button>}</div></div>

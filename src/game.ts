@@ -60,3 +60,9 @@ export function visibleTargetZone(zone:Zone,radius:number,viewportWidth:number,v
   const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
   return {left:clamp(zone.left,left,right),right:clamp(zone.right,left,right),top:clamp(zone.top,top,bottom),bottom:clamp(zone.bottom,top,bottom)};
 }
+
+export function poseWrists(landmarks:(Point & {visibility?:number})[]|undefined,selection:Hand):Point[] {
+  if(!landmarks)return [];
+  const indices=selection==='left'?[15]:selection==='right'?[16]:[15,16];
+  return indices.flatMap(i=>{const p=landmarks[i];return p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&(p.visibility??0)>.65?[mirror(p)]:[];});
+}
