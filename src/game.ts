@@ -72,3 +72,9 @@ export function advanceAcceleration(limit:number,streak:number,success:boolean,i
   const next=streak+1;
   return next>=series?{limit:Math.max(minimum,Math.round((limit-decrement)*1000)/1000),streak:0}:{limit,streak:next};
 }
+
+// Un STOP touché ne compte qu'une erreur, même si le poignet reste dessus.
+export function advanceStop(touched:boolean,contact:boolean,ageMs:number,durationMs:number){
+  const error=contact&&!touched&&ageMs<durationMs;
+  return {touched:touched||error,error,done:ageMs>=durationMs};
+}

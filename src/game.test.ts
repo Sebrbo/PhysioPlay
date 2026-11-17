@@ -46,3 +46,15 @@ test('accélération : plancher respecté même après plusieurs paliers',()=>{
   assert.deepEqual(advanceAcceleration(.6,4,true,4,5,.5,.5),{limit:.5,streak:0});
   assert.deepEqual(advanceAcceleration(.5,4,true,4,5,.5,.5),{limit:.5,streak:0});
 });
+
+import { advanceStop } from './game';
+test('STOP : contact bref détecté immédiatement, une seule erreur par cible',()=>{
+  assert.deepEqual(advanceStop(false,true,120,800),{touched:true,error:true,done:false});
+  assert.deepEqual(advanceStop(true,true,200,800),{touched:true,error:false,done:false});
+  assert.deepEqual(advanceStop(true,false,300,800),{touched:true,error:false,done:false});
+  assert.deepEqual(advanceStop(true,true,400,800),{touched:true,error:false,done:false});
+});
+test('STOP : expire après son propre délai sans contact tardif compté',()=>{
+  assert.deepEqual(advanceStop(false,false,799,800),{touched:false,error:false,done:false});
+  assert.deepEqual(advanceStop(false,true,800,800),{touched:false,error:false,done:true});
+});
