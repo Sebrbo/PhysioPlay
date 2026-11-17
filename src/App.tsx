@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { GameSound, type Cue } from './sound';
 import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
 import { advanceStop, advanceAcceleration, coverRect, visibleTargetZone, advanceCountdown, containRect, insetZone, scaleZone, advanceSessionClock, calibratedZone, contains, defaultZone, poseWrists, nextTarget, type Hand, type Point, type Zone } from './game';
 
@@ -14,7 +15,15 @@ export default function App(){
   const play=useRef<HTMLElement>(null);
   const hud=useRef<HTMLDivElement>(null);
   const settingsDialog=useRef<HTMLDialogElement>(null);
-  const [settingsOpen,setSettingsOpen]=useState(false),[settingsTab,setSettingsTab]=useState<'session'|'zone'|'about'>('session');
+  const [settingsOpen,setSettingsOpen]=useState(false),[settingsTab,setSettingsTab]=useState<'session'|'zone'|'sound'|'about'>('session');
+  const sound=useRef<GameSound|null>(null);
+  if(!sound.current)sound.current=new GameSound();
+  const [soundEnabled,setSoundEnabled]=useState(true),[volume,setVolume]=useState(40),[audioMessage,setAudioMessage]=useState('');
+  useEffect(()=>{sound.current!.configure(soundEnabled,volume/100);},[soundEnabled,volume]);
+  useEffect(()=>()=>sound.current?.close(),[]);
+  const cue=(name:Cue)=>{if(!document.hidden)sound.current?.play(name);};
+  async function testSound(name:Cue){const ready=await sound.current!.unlock();setAudioMessage(ready?'Son prêt. Ajuste aussi le volume de ton appareil.':'Son indisponible ou coupé : vérifie le volume et réessaie.');if(ready)cue(name);}
+  async function resumeGame(){const ready=sound.current!.unlock();changePhase('playing');if(await ready)if(state.current.phase==='playing')cue('resume');}
   const [countdown,setCountdown]=useState(5);
   const [mode,setMode]=useState<Mode>('therapy');
   const [series,setSeries]=useState(5),[decrement,setDecrement]=useState(.5),[minimum,setMinimum]=useState(.5);
@@ -33,7 +42,7 @@ export default function App(){
   const state=useRef({phase,source,mode,hand,duration,deadline,series,decrement,minimum,butterflySpeed,stopDuration,size,zone:effectiveZone,immersive});
   state.current={phase,source,mode,hand,duration,deadline,series,decrement,minimum,butterflySpeed,stopDuration,size,zone:effectiveZone,immersive};
   const runtime=useRef({target:null as Point|null,hands:[] as Point[],samples:[] as Point[],calibrationStart:0,calibrationValid:0,last:0,lastSeen:0,lastVideo:-1,countdownMs:5000,active:0,targetAge:0,dwell:0,streak:0,limit:4,red:false,redTouched:false,destination:null as Point|null,stats:initialStats(60),number:1,pointer:null as Point|null});
-  const changePhase=(p:Phase)=>{runtime.current.last=performance.now();state.current.phase=p;setPhase(p);};
+  const changePhase=(p:Phase)=>{if(p!=='playing')sound.current?.stop();if(p==='paused'&&state.current.phase==='playing')cue('pause');runtime.current.last=performance.now();state.current.phase=p;setPhase(p);};
   const stop=()=>{generation.current++;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;detector.current?.close();detector.current=null;if(video.current)video.current.srcObject=null;runtime.current.hands=[];runtime.current.target=null;setTracking(false);setSource(null);setZone(null);setZoneMode(null);changePhase('idle');setBusy(false);setMessage('Étape 1 : active la caméra. Ton navigateur demandera ensuite ton autorisation.');};
   useEffect(()=>()=>{generation.current++;stream.current?.getTracks().forEach(t=>t.stop());detector.current?.close();},[]);
   useEffect(()=>{const hidden=()=>{if(document.hidden&&state.current.phase==='countdown'){changePhase('ready');setMessage('Départ annulé : l’application a été masquée.');}if(document.hidden && ['playing','calibrating'].includes(state.current.phase)){changePhase('paused');setMessage('Séance en pause : l’application a été masquée.');}};document.addEventListener('visibilitychange',hidden);return()=>document.removeEventListener('visibilitychange',hidden);},[]);
@@ -82,14 +91,15 @@ export default function App(){
   }
   function demo(){stop();setSource('demo');setZone(defaultZone);setZoneMode('standard');changePhase('ready');setMessage('Démonstration : déplace le pointeur ou ton doigt sur les cibles. Aucun suivi corporel.');}
   function useStandardZone(){setZone(defaultZone);setZoneMode('standard');changePhase('ready');setMessage('Zone standard choisie : vérifie que les cibles restent accessibles. Tu peux calibrer une zone personnalisée.');}
-  function calibrate(){if(immersive){void backToPreparation();}runtime.current.samples=[];runtime.current.calibrationStart=performance.now();runtime.current.calibrationValid=0;setZone(null);setZoneMode(null);changePhase('calibrating');setMessage('Pendant 8 secondes de suivi, balaie doucement ta zone confortable avec la ou les mains choisies.');}
+  function calibrate(){void sound.current!.unlock();if(immersive){void backToPreparation();}runtime.current.samples=[];runtime.current.calibrationStart=performance.now();runtime.current.calibrationValid=0;setZone(null);setZoneMode(null);changePhase('calibrating');setMessage('Pendant 8 secondes de suivi, balaie doucement ta zone confortable avec la ou les mains choisies.');}
   function start(){
     if(!zone){changePhase('ready');setMessage('Calibre à nouveau la zone avant de commencer.');return;}
+    const audioReady=sound.current!.unlock();
     if(!immersive){void toggleFullscreen();}
     const r=runtime.current;r.stats=initialStats(duration);r.active=0;r.targetAge=0;r.dwell=0;r.number=1;r.streak=0;r.limit=deadline;r.red=false;r.redTouched=false;r.destination=null;setChallenge({limit:deadline,streak:0});r.target=null;r.countdownMs=5000;
-    setStats({...r.stats});setCountdown(5);changePhase('countdown');setMessage('Prépare-toi : le jeu passe en plein écran. Place tes mains pendant le décompte.');
+    setStats({...r.stats});setCountdown(5);changePhase('countdown');void audioReady.then(ready=>{if(ready&&state.current.phase==='countdown'&&runtime.current.countdownMs>4000)cue('tick');});setMessage('Prépare-toi : le jeu passe en plein écran. Place tes mains pendant le décompte.');
   }
-  function finish(){changePhase('result');runtime.current.target=null;setStats({...runtime.current.stats});setMessage('Séance terminée. Les résultats restent uniquement en mémoire.');}
+  function finish(){changePhase('result');cue('finish');runtime.current.target=null;setStats({...runtime.current.stats});setMessage('Séance terminée. Les résultats restent uniquement en mémoire.');}
 
   useEffect(()=>{
     let raf=0;
@@ -115,12 +125,12 @@ export default function App(){
       if(s.phase==='calibrating'){
         if(valid){r.calibrationValid+=dt;r.samples.push(...r.hands);}
         setMessage(`Explore ta zone confortable · ${Math.max(0,8-Math.floor(r.calibrationValid/1000))} s de suivi restantes`);
-        if(r.calibrationValid>=8000){const z=calibratedZone(r.samples);setZone(z);setZoneMode(z?'calibrated':null);changePhase('ready');setMessage(z?'Calibration prête. Reste à la même place pour jouer.':'Zone insuffisante. Recule pour cadrer les mains et recommence sans forcer.');}
+        if(r.calibrationValid>=8000){const z=calibratedZone(r.samples);setZone(z);setZoneMode(z?'calibrated':null);changePhase('ready');if(z)cue('calibrated');setMessage(z?'Calibration prête. Reste à la même place pour jouer.':'Zone insuffisante. Recule pour cadrer les mains et recommence sans forcer.');}
         else if(now-r.calibrationStart>30000){changePhase('ready');setMessage('Calibration interrompue : suivi insuffisant. Vérifie le cadrage et réessaie.');}
       }
       if(s.phase==='countdown'){
-        const clock=advanceCountdown(r.countdownMs,elapsed);r.countdownMs=clock.remainingMs;setCountdown(clock.seconds);
-        if(clock.done){if(targetZone){r.target=nextTarget(targetZone,null);changePhase('playing');setMessage(s.mode==='butterfly'?'Garde ton poignet dans le halo du papillon.':s.mode==='traffic'?'Touche GO, évite STOP.':'Atteins le centre de la cible avec le poignet.');}else{changePhase('ready');setMessage('Calibre la zone avant de commencer.');}}
+        const previousSeconds=Math.ceil(r.countdownMs/1000);const clock=advanceCountdown(r.countdownMs,elapsed);r.countdownMs=clock.remainingMs;setCountdown(clock.seconds);if(clock.seconds>0&&clock.seconds<previousSeconds)cue('tick');
+        if(clock.done){if(targetZone){r.target=nextTarget(targetZone,null);changePhase('playing');cue('start');setMessage(s.mode==='butterfly'?'Garde ton poignet dans le halo du papillon.':s.mode==='traffic'?'Touche GO, évite STOP.':'Atteins le centre de la cible avec le poignet.');}else{changePhase('ready');setMessage('Calibre la zone avant de commencer.');}}
       }
       else if(s.phase==='playing'){
         const clock=advanceSessionClock(r.active,elapsed,s.duration);
@@ -141,18 +151,18 @@ export default function App(){
               if(r.dwell>=1000){r.stats.hits++;r.dwell-=1000;}
             }else if(s.mode==='traffic'&&r.red){
               const stop=advanceStop(r.redTouched,touching,r.targetAge,s.stopDuration*1000);
-              if(stop.error){r.stats.redErrors++;r.stats.misses++;}
+              if(stop.error){r.stats.redErrors++;r.stats.misses++;cue('red');}
               r.redTouched=stop.touched;
               if(stop.done){if(!r.redTouched)r.stats.hits++;advance=true;}
             }else{
               const limit=s.mode==='acceleration'?r.limit:s.deadline;
               // Expiration wins over a contact that arrives after the deadline.
               if(s.mode!=='therapy'&&r.targetAge>=limit*1000){miss=true;advance=true;}
-              else if(r.dwell>=(s.mode==='therapy'?250:80)){r.stats.hits++;r.stats.times.push(r.targetAge);advance=true;}
-              if(miss)r.stats.misses++;
+              else if(r.dwell>=(s.mode==='therapy'?250:80)){r.stats.hits++;r.stats.times.push(r.targetAge);if(!(s.mode==='acceleration'&&r.streak+1>=s.series&&r.limit>s.minimum))cue('hit');advance=true;}
+              if(miss){r.stats.misses++;cue(s.mode==='acceleration'?'reset':'miss');}
               if(advance&&s.mode==='acceleration'){
                 const progress=advanceAcceleration(r.limit,r.streak,!miss,s.deadline,s.series,s.decrement,s.minimum);
-                r.limit=progress.limit;r.streak=progress.streak;
+                if(progress.limit<r.limit)cue('level');r.limit=progress.limit;r.streak=progress.streak;
                 setChallenge({limit:r.limit,streak:r.streak});
               }
             }
@@ -174,7 +184,7 @@ export default function App(){
   const locked=busy||['playing','paused','countdown','calibrating'].includes(phase);
   const mean=stats.times.length?`${(stats.times.reduce((a,b)=>a+b,0)/stats.times.length/1000).toFixed(2)} s`:'—';
   return <div className="app">
-    <header><a className="brand" href="./"><span className="brand-icon">◎</span> Physio<span>Play</span></a><span className="version">V0.2.1 <i/> Traitement local</span></header>
+    <header><a className="brand" href="./"><span className="brand-icon">◎</span> Physio<span>Play</span></a><span className="version">V0.3.0 <i/> Traitement local</span></header>
     <main><section ref={play} className={`play ${immersive?'immersive':''}`} aria-label="Espace de jeu PhysioTargets">
       <div className="play-top"><div className="game-title"><strong>PhysioTargets</strong><span>{source==='demo'?'Démonstration':source==='camera'?(tracking?'● Poignet détecté':'○ En attente de suivi'):'Caméra désactivée'}</span></div>
       <div className="top-actions"><button disabled={locked} onClick={()=>setSettingsOpen(true)}>⚙ Réglages</button><button onClick={toggleFullscreen}>{immersive?'↙ Quitter le plein écran':'⛶ Plein écran'}</button></div></div>
@@ -213,7 +223,7 @@ export default function App(){
     {source&&zone&&phase==='ready'&&!immersive&&<div className="ready-card"><div><p className="onboarding-step">ÉTAPE 3 SUR 3 · JOUER</p><p>{modeNames[mode]} · Choisis ton jeu dans ⚙ Réglages.</p><strong>{zoneMode==='calibrated'?'Ta zone personnalisée est prête':'La zone standard est prête'}</strong><p>Le plein écran s’ouvre automatiquement, puis tu as 5 secondes pour te placer.</p></div><button className="onboarding-primary" onClick={start}>Commencer le jeu</button></div>}
     {phase==='countdown'&&<div className="overlay countdown-overlay" aria-live="polite"><p>PRÊT À JOUER ?</p><strong className="countdown-number">{countdown}</strong><p>Place-toi confortablement. Le chrono démarrera après le décompte.</p><button onClick={()=>{changePhase('ready');setMessage('Départ annulé.');}}>Annuler le départ</button></div>}
     {phase==='playing'&&!tracking&&<div className="tracking-notice" role="status">Replace les mains dans le cadre · la séance continue</div>}
-    {phase==='paused'&&<div className="overlay"><h2>Une pause pour souffler.</h2><button className="primary" disabled={!zone} onClick={()=>changePhase('playing')}>Reprendre</button><button onClick={backToPreparation}>Revenir à la préparation</button></div>}
+    {phase==='paused'&&<div className="overlay"><h2>Une pause pour souffler.</h2><button className="primary" disabled={!zone} onClick={resumeGame}>Reprendre</button><button onClick={backToPreparation}>Revenir à la préparation</button></div>}
     {phase==='result'&&<div className="overlay result"><p className="eyebrow">SÉANCE TERMINÉE</p><h2>{stats.hits} {mode==='butterfly'?'secondes de suivi continu cumulé':mode==='traffic'?'consignes réussies':'cibles atteintes'}</h2><p>{mode!=='butterfly'&&<>Temps moyen d’atteinte : {mean}<br/></>}{mode==='traffic'?<>{stats.redErrors} cibles rouges touchées (erreurs STOP)<br/>{stats.misses-stats.redErrors} cibles vertes manquées<br/>{stats.misses} erreurs au total</>:mode!=='therapy'&&mode!=='butterfly'?`${stats.misses} cibles expirées`:'Chaque mouvement compte.'}</p><button className="primary" onClick={start}>Rejouer</button><button onClick={backToPreparation}>Modifier la séance</button></div>}
     {!immersive&&phase==='playing'&&tracking&&<span className="stage-hint">{mode==='butterfly'?'Garde le poignet dans le halo du papillon':mode==='traffic'?'Touche GO · Évite STOP':mode==='therapy'?'Maintiens le poignet sur la cible · ¼ s':'Touche la cible avant la fin du cercle'}</span>}
 
@@ -222,7 +232,7 @@ export default function App(){
       <p className="status" role="status">{message}</p>
       <dialog ref={settingsDialog} className="settings-dialog" aria-labelledby="settings-title" onCancel={()=>setSettingsOpen(false)} onClose={()=>setSettingsOpen(false)}>
         <div className="dialog-header"><h2 id="settings-title">Réglages</h2><button aria-label="Fermer les réglages" onClick={()=>setSettingsOpen(false)}>✕ Fermer</button></div>
-        <div className="settings-tabs" role="tablist" aria-label="Catégories des réglages">{([['session','Séance'],['zone','Zone des cibles'],['about','À propos']] as const).map(([id,label])=><button key={id} id={`tab-${id}`} role="tab" aria-selected={settingsTab===id} aria-controls={`panel-${id}`} onClick={()=>setSettingsTab(id)}>{label}</button>)}</div>
+        <div className="settings-tabs" role="tablist" aria-label="Catégories des réglages">{([['session','Séance'],['zone','Zone des cibles'],['sound','Sons'],['about','À propos']] as const).map(([id,label])=><button key={id} id={`tab-${id}`} role="tab" aria-selected={settingsTab===id} aria-controls={`panel-${id}`} onClick={()=>setSettingsTab(id)}>{label}</button>)}</div>
         <div className="settings-body" role="tabpanel" id={`panel-${settingsTab}`} aria-labelledby={`tab-${settingsTab}`}>
         {settingsTab==='session'&&<>
           <label>Jeu<select value={mode} onChange={e=>setMode(e.target.value as Mode)}>{Object.entries(modeNames).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
@@ -239,7 +249,8 @@ export default function App(){
         </>}
         {settingsTab==='zone'&&<><label>Largeur · {zoneWidth} %<input type="range" min="50" max="150" step="5" value={zoneWidth} onChange={e=>setZoneWidth(+e.target.value)}/></label><label>Hauteur · {zoneHeight} %<input type="range" min="50" max="150" step="5" value={zoneHeight} onChange={e=>setZoneHeight(+e.target.value)}/></label>
         <div className="zone-presets"><button onClick={()=>{setZoneWidth(150);setZoneHeight(150);}}>Par défaut · 150 %</button><button onClick={()=>{setZoneWidth(100);setZoneHeight(100);}}>Zone calibrée · 100 %</button></div><p className="helper">150 % par défaut, appliqués à la zone choisie (personnalisée ou standard). Au-delà de 100 %, la zone est élargie : garde des mouvements confortables.</p></>}
-        {settingsTab==='about'&&<div className="about"><h3>Caméra privée</h3><p>Images et coordonnées traitées sur cet appareil, sans enregistrement ni envoi. Aucun historique patient.</p><h3>Installation et confort</h3><p>Appareil stable, haut du corps et mains visibles. La calibration est facultative : elle personnalise la zone des cibles. La zone standard permet de jouer sans cette étape. Pour personnaliser la zone, bouge doucement sans rechercher ton amplitude maximale.</p><p>Prototype à évaluer avec le thérapeute. Arrête en cas de douleur. La calibration ne mesure pas les angles articulaires.</p></div>}
+        {settingsTab==='sound'&&<><h3>Repères sonores</h3><label><input type="checkbox" checked={soundEnabled} onChange={e=>setSoundEnabled(e.target.checked)}/> Activer les sons</label><label>Volume des sons · {volume} %<input type="range" min="0" max="100" step="5" value={volume} onChange={e=>setVolume(+e.target.value)}/></label><p className="helper">Bips du décompte, signal de départ, réussite, erreur STOP, cible expirée, changement de palier, pause et fin de séance. Le papillon reste silencieux pendant le suivi.</p><div className="zone-presets"><button disabled={!soundEnabled||volume===0} onClick={()=>void testSound('hit')}>Tester la réussite</button><button disabled={!soundEnabled||volume===0} onClick={()=>void testSound('red')}>Tester l’erreur STOP</button></div><p role="status">{audioMessage}</p><p className="helper">Les sons s’activent en appuyant sur Commencer. Si tu n’entends rien, vérifie aussi le volume et le mode silencieux de l’iPad.</p></>}
+        {settingsTab==='about' &&<div className="about"><h3>Caméra privée</h3><p>Images et coordonnées traitées sur cet appareil, sans enregistrement ni envoi. Aucun historique patient.</p><h3>Installation et confort</h3><p>Appareil stable, haut du corps et mains visibles. La calibration est facultative : elle personnalise la zone des cibles. La zone standard permet de jouer sans cette étape. Pour personnaliser la zone, bouge doucement sans rechercher ton amplitude maximale.</p><p>Prototype à évaluer avec le thérapeute. Arrête en cas de douleur. La calibration ne mesure pas les angles articulaires.</p></div>}
         </div><div className="dialog-footer"><button className="primary" onClick={()=>setSettingsOpen(false)}>Revenir au jeu</button></div>
       </dialog>
     </section></main></div>;
