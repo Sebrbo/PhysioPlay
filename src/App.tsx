@@ -18,9 +18,10 @@ export default function App(){
   const [hand,setHand]=useState<Hand>('both');
   const [duration,setDuration]=useState(60),[deadline,setDeadline]=useState(4),[size,setSize]=useState(48);
   const [phase,setPhase]=useState<Phase>('idle'),[source,setSource]=useState<'camera'|'demo'|null>(null);
-  const [busy,setBusy]=useState(false),[message,setMessage]=useState('Choisis un mode, puis active la caméra pour commencer.');
+  const [busy,setBusy]=useState(false),[message,setMessage]=useState('Étape 1 : active la caméra. Ton navigateur demandera ensuite ton autorisation.');
   const [tracking,setTracking]=useState(false),[zone,setZone]=useState<Zone|null>(null);
-  const [stats,setStats]=useState(initialStats(60)),[consent,setConsent]=useState(false);
+  const [stats,setStats]=useState(initialStats(60));
+  const [zoneMode,setZoneMode]=useState<'standard'|'calibrated'|null>(null);
   const video=useRef<HTMLVideoElement>(null),canvas=useRef<HTMLCanvasElement>(null),stage=useRef<HTMLDivElement>(null);
   const stream=useRef<MediaStream|null>(null),detector=useRef<PoseLandmarker|null>(null),generation=useRef(0);
   const effectiveZone=zone?scaleZone(zone,zoneWidth,zoneHeight):null;
@@ -28,7 +29,7 @@ export default function App(){
   state.current={phase,source,mode,hand,duration,deadline,size,zone:effectiveZone,immersive};
   const runtime=useRef({target:null as Point|null,hands:[] as Point[],samples:[] as Point[],calibrationStart:0,calibrationValid:0,last:0,lastSeen:0,lastVideo:-1,countdownMs:5000,active:0,targetAge:0,dwell:0,stats:initialStats(60),number:1,pointer:null as Point|null});
   const changePhase=(p:Phase)=>{runtime.current.last=performance.now();state.current.phase=p;setPhase(p);};
-  const stop=()=>{generation.current++;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;detector.current?.close();detector.current=null;if(video.current)video.current.srcObject=null;runtime.current.hands=[];runtime.current.target=null;setTracking(false);setSource(null);setZone(null);changePhase('idle');setBusy(false);};
+  const stop=()=>{generation.current++;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;detector.current?.close();detector.current=null;if(video.current)video.current.srcObject=null;runtime.current.hands=[];runtime.current.target=null;setTracking(false);setSource(null);setZone(null);setZoneMode(null);changePhase('idle');setBusy(false);setMessage('Étape 1 : active la caméra. Ton navigateur demandera ensuite ton autorisation.');};
   useEffect(()=>()=>{generation.current++;stream.current?.getTracks().forEach(t=>t.stop());detector.current?.close();},[]);
   useEffect(()=>{const hidden=()=>{if(document.hidden&&state.current.phase==='countdown'){changePhase('ready');setMessage('Départ annulé : l’application a été masquée.');}if(document.hidden && ['playing','calibrating'].includes(state.current.phase)){changePhase('paused');setMessage('Séance en pause : l’application a été masquée.');}};document.addEventListener('visibilitychange',hidden);return()=>document.removeEventListener('visibilitychange',hidden);},[]);
   useEffect(()=>{const resize=()=>{if(state.current.phase==='countdown'){changePhase('ready');setMessage('Affichage modifié : calibre à nouveau avant de commencer.');}if(['playing','calibrating'].includes(state.current.phase)){changePhase('paused');setMessage('Affichage modifié : recalibre avant de reprendre.');}setZone(null);};window.addEventListener('orientationchange',resize);return()=>window.removeEventListener('orientationchange',resize);},[]);
@@ -69,13 +70,14 @@ export default function App(){
       video.current!.srcObject=media;await video.current!.play();
       const files=await FilesetResolver.forVisionTasks(`${import.meta.env.BASE_URL}mediapipe/wasm`);
       const model=await PoseLandmarker.createFromOptions(files,{baseOptions:{modelAssetPath:`${import.meta.env.BASE_URL}mediapipe/pose_landmarker_lite.task`,delegate:'CPU'},runningMode:'VIDEO',numPoses:1,minPoseDetectionConfidence:.6,minTrackingConfidence:.6,minPosePresenceConfidence:.6});
-      if(id!==generation.current){model.close();return;}detector.current=model;runtime.current.lastVideo=-1;setSource('camera');setZone(null);changePhase('ready');setMessage('Cadre le haut du corps et les mains. Lance ensuite la calibration.');
+      if(id!==generation.current){model.close();return;}detector.current=model;runtime.current.lastVideo=-1;setSource('camera');setZone(null);changePhase('ready');setMessage('Étape 2 : choisis une zone adaptée ou la zone standard. Les points blancs indiquent les poignets détectés.');
       media.getVideoTracks()[0].addEventListener('ended',()=>{if(id===generation.current){stop();setMessage('Caméra déconnectée. Active-la à nouveau.');}});
     }catch(e){if(id===generation.current){stop();setMessage(e instanceof DOMException && e.name==='NotAllowedError'?'Accès caméra refusé. Autorise la caméra dans les réglages du navigateur, puis réessaie.':`Caméra indisponible : ${e instanceof Error?e.message:'erreur inconnue'}`);}}
     finally{if(id===generation.current)setBusy(false);}
   }
-  function demo(){stop();setSource('demo');setZone(defaultZone);changePhase('ready');setMessage('Démonstration : déplace le pointeur ou ton doigt sur les cibles. Aucun suivi corporel.');}
-  function calibrate(){if(immersive){void backToPreparation();}runtime.current.samples=[];runtime.current.calibrationStart=performance.now();runtime.current.calibrationValid=0;setZone(null);changePhase('calibrating');setMessage('Pendant 8 secondes de suivi, balaie doucement ta zone confortable avec la ou les mains choisies.');}
+  function demo(){stop();setSource('demo');setZone(defaultZone);setZoneMode('standard');changePhase('ready');setMessage('Démonstration : déplace le pointeur ou ton doigt sur les cibles. Aucun suivi corporel.');}
+  function useStandardZone(){setZone(defaultZone);setZoneMode('standard');changePhase('ready');setMessage('Zone standard choisie : vérifie que les cibles restent accessibles. Tu peux calibrer une zone personnalisée.');}
+  function calibrate(){if(immersive){void backToPreparation();}runtime.current.samples=[];runtime.current.calibrationStart=performance.now();runtime.current.calibrationValid=0;setZone(null);setZoneMode(null);changePhase('calibrating');setMessage('Pendant 8 secondes de suivi, balaie doucement ta zone confortable avec la ou les mains choisies.');}
   function start(){
     if(!zone){changePhase('ready');setMessage('Calibre à nouveau la zone avant de commencer.');return;}
     if(!immersive){void toggleFullscreen();}
@@ -108,7 +110,7 @@ export default function App(){
       if(s.phase==='calibrating'){
         if(valid){r.calibrationValid+=dt;r.samples.push(...r.hands);}
         setMessage(`Explore ta zone confortable · ${Math.max(0,8-Math.floor(r.calibrationValid/1000))} s de suivi restantes`);
-        if(r.calibrationValid>=8000){const z=calibratedZone(r.samples);setZone(z);changePhase('ready');setMessage(z?'Calibration prête. Reste à la même place pour jouer.':'Zone insuffisante. Recule pour cadrer les mains et recommence sans forcer.');}
+        if(r.calibrationValid>=8000){const z=calibratedZone(r.samples);setZone(z);setZoneMode(z?'calibrated':null);changePhase('ready');setMessage(z?'Calibration prête. Reste à la même place pour jouer.':'Zone insuffisante. Recule pour cadrer les mains et recommence sans forcer.');}
         else if(now-r.calibrationStart>30000){changePhase('ready');setMessage('Calibration interrompue : suivi insuffisant. Vérifie le cadrage et réessaie.');}
       }
       if(s.phase==='countdown'){
@@ -141,16 +143,14 @@ export default function App(){
   const locked=busy||['playing','paused','countdown','calibrating'].includes(phase);
   const mean=stats.times.length?`${(stats.times.reduce((a,b)=>a+b,0)/stats.times.length/1000).toFixed(2)} s`:'—';
   return <div className="app">
-    <header><a className="brand" href="./"><span className="brand-icon">◎</span> Physio<span>Play</span></a><span className="version">V0.1.6 <i/> Traitement local</span></header>
+    <header><a className="brand" href="./"><span className="brand-icon">◎</span> Physio<span>Play</span></a><span className="version">V0.1.7 <i/> Traitement local</span></header>
     <main><section ref={play} className={`play ${immersive?'immersive':''}`} aria-label="Espace de jeu PhysioTargets">
       <div className="play-top"><div className="game-title"><strong>PhysioTargets</strong><span>{source==='demo'?'Démonstration':source==='camera'?(tracking?'● Poignet détecté':'○ En attente de suivi'):'Caméra désactivée'}</span></div>
       <div className="top-actions"><button disabled={locked} onClick={()=>setSettingsOpen(true)}>⚙ Réglages</button><button onClick={toggleFullscreen}>{immersive?'↙ Quitter le plein écran':'⛶ Plein écran'}</button></div></div>
       <div className="setup-toolbar">
       <span className="session-summary">{mode==='therapy'?'Thérapeutique':'Réactivité'} · {duration} s · zone {zoneWidth} × {zoneHeight} %</span>
       <div className="session-actions">
-      {!source&&<><label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>Autoriser la caméra</label><button className="primary" disabled={!consent||busy} onClick={startCamera}>{busy?'Chargement…':'Activer la caméra'}</button><button disabled={busy} onClick={demo}>Démonstration</button></>}
-      {source&&<>{source==='camera'&&<button disabled={locked} onClick={calibrate}>{zone?'Recalibrer':'Calibrer · 8 s'}</button>}
-      {!locked&&<button className="primary" disabled={!zone} onClick={start}>Commencer · départ dans 5 s</button>}
+      {source&&<>{source==='camera'&&zone&&<button disabled={locked} onClick={calibrate}>Adapter la zone · 8 s</button>}
       <button onClick={stop}>Arrêter {source==='camera'?'la caméra':'la démo'}</button></>}
       </div></div>
     <div className="stage" ref={stage} style={{aspectRatio:source==='camera'&&video.current?.videoWidth?`${video.current.videoWidth}/${video.current.videoHeight}`:'4/3'}} onPointerMove={demoPointer} onPointerLeave={()=>runtime.current.pointer=null} onPointerDown={demoPointer} onPointerUp={()=>{runtime.current.pointer=null;}}>
@@ -161,7 +161,25 @@ export default function App(){
       {!locked&&phase!=='result'&&<div className="immersive-prepare">{!source?<button onClick={backToPreparation}>Préparer la caméra</button>:zone?<button className="primary" onClick={start}>Commencer · départ dans 5 s</button>:<button onClick={calibrate}>Calibrer · 8 s</button>}</div>}
     </>}
 
-    {!source&&<div className="welcome"><div className="target-icon">◎</div><h2>Un peu de mouvement.<br/>Beaucoup de possibilités.</h2><p>Active la caméra et retrouve-toi<br/>au centre du jeu.</p><span>CAMÉRA FRONTALE · SANS CAPTEUR</span></div>}
+    {!source&&<div className="welcome onboarding-welcome"><div className="onboarding-card">
+      <p className="onboarding-step">ÉTAPE 1 SUR 3 · CAMÉRA</p><h2>Prêt à bouger ?</h2>
+      <p>Active la caméra, choisis ta zone,<br/>puis lance le jeu.</p>
+      <button className="onboarding-primary" disabled={busy} onClick={startCamera}>{busy?'Chargement de la caméra…':'Activer la caméra'}</button>
+      {!busy&&/(refusé|indisponible)/.test(message)&&<p className="onboarding-error" role="alert">{message}</p>}
+      <p className="camera-permission">Si le navigateur le demande, appuie sur <strong>Autoriser</strong>.<br/>Les images restent sur cet appareil.</p>
+      <button className="onboarding-secondary" disabled={busy} onClick={demo}>Essayer sans caméra</button>
+      {busy&&<button className="onboarding-secondary" onClick={stop}>Annuler</button>}
+    </div></div>}
+    {source==='camera'&&phase==='ready'&&!zone&&<div className="overlay zone-onboarding"><div className="onboarding-card">
+      <p className="onboarding-step">ÉTAPE 2 SUR 3 · ZONE DE JEU</p><h2>Où veux-tu faire apparaître les cibles ?</h2>
+      <p>Les points blancs montrent tes poignets.<br/>La calibration adapte la zone, pas la détection.</p>
+      <button className="onboarding-primary" onClick={calibrate}>Adapter ma zone · 8 secondes</button>
+      <p className="choice-help">Balaie doucement l’espace confortable avec tes mains.</p>
+      <button className="onboarding-secondary standard-zone" onClick={useStandardZone}>Utiliser la zone standard sans calibration</button>
+      <p className="choice-help">Zone prédéfinie : vérifie que les cibles restent accessibles.</p>
+    </div></div>}
+    {phase==='calibrating'&&<div className="overlay calibration-guide"><p className="onboarding-step">ZONE PERSONNALISÉE</p><h2>Bouge dans ta zone confortable</h2><p>Balaie doucement l’espace avec les mains choisies,<br/>sans forcer ni rechercher l’amplitude maximale.</p><strong className="calibration-progress">{message}</strong><button onClick={()=>{changePhase('ready');setMessage('Choisis une zone pour continuer.');}}>Annuler la calibration</button></div>}
+    {source&&zone&&phase==='ready'&&!immersive&&<div className="ready-card"><div><p className="onboarding-step">ÉTAPE 3 SUR 3 · JOUER</p><strong>{zoneMode==='calibrated'?'Ta zone personnalisée est prête':'La zone standard est prête'}</strong><p>Le plein écran s’ouvre automatiquement, puis tu as 5 secondes pour te placer.</p></div><button className="onboarding-primary" onClick={start}>Commencer le jeu</button></div>}
     {phase==='countdown'&&<div className="overlay countdown-overlay" aria-live="polite"><p>PRÊT À JOUER ?</p><strong className="countdown-number">{countdown}</strong><p>Place-toi confortablement. Le chrono démarrera après le décompte.</p><button onClick={()=>{changePhase('ready');setMessage('Départ annulé.');}}>Annuler le départ</button></div>}
     {phase==='playing'&&!tracking&&<div className="tracking-notice" role="status">Replace les mains dans le cadre · la séance continue</div>}
     {phase==='paused'&&<div className="overlay"><h2>Une pause pour souffler.</h2><button className="primary" disabled={!zone} onClick={()=>changePhase('playing')}>Reprendre</button><button onClick={backToPreparation}>Revenir à la préparation</button></div>}
@@ -181,11 +199,11 @@ export default function App(){
           <label>Durée<select value={duration} onChange={e=>setDuration(+e.target.value)}>{[30,60,90,120].map(n=><option key={n} value={n}>{n} secondes</option>)}</select></label>
           <label>Taille des cibles<select value={size} onChange={e=>setSize(+e.target.value)}><option value={60}>Grande</option><option value={48}>Moyenne</option><option value={34}>Petite</option></select></label>
           {mode==='reaction'&&<label>Délai par cible<select value={deadline} onChange={e=>setDeadline(+e.target.value)}>{[2,3,4,6,8].map(n=><option key={n} value={n}>{n} secondes</option>)}</select></label>}</div>
-          <p className="helper">Chaque départ comporte 5 secondes de préparation, hors durée de séance. Un changement de main demande une nouvelle calibration.</p>
+          <p className="helper">Chaque départ comporte 5 secondes de préparation, hors durée de séance. Après un changement de main, choisis à nouveau une zone personnalisée ou standard.</p>
         </>}
         {settingsTab==='zone'&&<><label>Largeur · {zoneWidth} %<input type="range" min="50" max="150" step="5" value={zoneWidth} onChange={e=>setZoneWidth(+e.target.value)}/></label><label>Hauteur · {zoneHeight} %<input type="range" min="50" max="150" step="5" value={zoneHeight} onChange={e=>setZoneHeight(+e.target.value)}/></label>
-        <div className="zone-presets"><button onClick={()=>{setZoneWidth(150);setZoneHeight(150);}}>Par défaut · 150 %</button><button onClick={()=>{setZoneWidth(100);setZoneHeight(100);}}>Zone calibrée · 100 %</button></div><p className="helper">150 % par défaut. Au-delà de 100 %, les cibles dépassent la zone explorée : ajuste les réglages pour garder des mouvements confortables.</p></>}
-        {settingsTab==='about'&&<div className="about"><h3>Caméra privée</h3><p>Images et coordonnées traitées sur cet appareil, sans enregistrement ni envoi. Aucun historique patient.</p><h3>Installation et confort</h3><p>Appareil stable, haut du corps et mains visibles. Calibre en bougeant doucement, sans rechercher ton amplitude maximale.</p><p>Prototype à évaluer avec le thérapeute. Arrête en cas de douleur. La calibration ne mesure pas les angles articulaires.</p></div>}
+        <div className="zone-presets"><button onClick={()=>{setZoneWidth(150);setZoneHeight(150);}}>Par défaut · 150 %</button><button onClick={()=>{setZoneWidth(100);setZoneHeight(100);}}>Zone calibrée · 100 %</button></div><p className="helper">150 % par défaut, appliqués à la zone choisie (personnalisée ou standard). Au-delà de 100 %, la zone est élargie : garde des mouvements confortables.</p></>}
+        {settingsTab==='about'&&<div className="about"><h3>Caméra privée</h3><p>Images et coordonnées traitées sur cet appareil, sans enregistrement ni envoi. Aucun historique patient.</p><h3>Installation et confort</h3><p>Appareil stable, haut du corps et mains visibles. La calibration est facultative : elle personnalise la zone des cibles. La zone standard permet de jouer sans cette étape. Pour personnaliser la zone, bouge doucement sans rechercher ton amplitude maximale.</p><p>Prototype à évaluer avec le thérapeute. Arrête en cas de douleur. La calibration ne mesure pas les angles articulaires.</p></div>}
         </div><div className="dialog-footer"><button className="primary" onClick={()=>setSettingsOpen(false)}>Revenir au jeu</button></div>
       </dialog>
     </section></main></div>;
