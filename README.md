@@ -130,3 +130,9 @@ Un grand bouton Activer la caméra remplace la case Autoriser puis le second bou
 Après activation : étape 2, choix explicite entre Adapter ma zone (8 secondes) et Utiliser la zone standard sans calibration. Les points blancs signalent la détection des poignets ; la calibration mesure uniquement l'enveloppe 2D explorée pour placer les cibles. Elle reste facultative, et ne garantit pas l'accessibilité de chaque cible (particulièrement avec le facteur 150 %).
 
 La zone standard reprend le rectangle prédéfini déjà utilisé dans la démonstration, avec les facteurs largeur/hauteur des réglages. Elle n'est pas présentée comme personnalisée. Après le choix ou une calibration réussie, l'étape 3 montre un grand bouton Commencer le jeu. Les instructions de calibration sont affichées au centre de la vidéo. Les changements de main ou d'orientation demandent de choisir à nouveau une zone.
+
+## V0.2.0 — Jeux variés
+- Papillon : poursuite continue, un point par seconde continue dans le halo.
+- Feu vert / rouge : toucher GO, éviter STOP jusqu’à expiration. Un contact STOP compte une seule erreur.
+- Accélération : délai initial, réussites par palier, réduction et minimum réglables. Expiration = retour au délai initial et série remise à zéro.
+- Les délais continuent en cas de perte de détection ; Pause les fige.
