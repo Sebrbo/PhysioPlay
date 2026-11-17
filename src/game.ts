@@ -66,3 +66,9 @@ export function poseWrists(landmarks:(Point & {visibility?:number})[]|undefined,
   const indices=selection==='left'?[15]:selection==='right'?[16]:[15,16];
   return indices.flatMap(i=>{const p=landmarks[i];return p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&(p.visibility??0)>.65?[mirror(p)]:[];});
 }
+
+export function advanceAcceleration(limit:number,streak:number,success:boolean,initial:number,series:number,decrement:number,minimum:number){
+  if(!success)return {limit:initial,streak:0};
+  const next=streak+1;
+  return next>=series?{limit:Math.max(minimum,Math.round((limit-decrement)*1000)/1000),streak:0}:{limit,streak:next};
+}

@@ -32,3 +32,17 @@ test('les cibles du plein écran restent visibles après recadrage et sous les c
 
 test('les poignets du modèle corporel restent le point de contact gauche/droite',()=>{const pose=Array.from({length:33},()=>({x:.5,y:.5,visibility:.9}));pose[15]={x:.2,y:.3,visibility:.9};pose[16]={x:.7,y:.4,visibility:.9};assert.deepEqual(poseWrists(pose,'left'),[{x:.8,y:.3}]);assert.deepEqual(poseWrists(pose,'right'),[{x:1-.7,y:.4}]);assert.equal(poseWrists(pose,'both').length,2);});
 test('aucun contact si la pose ou le poignet est perdu',()=>{assert.deepEqual(poseWrists(undefined,'both'),[]);const pose=Array.from({length:33},()=>({x:.5,y:.5,visibility:.2}));assert.deepEqual(poseWrists(pose,'both'),[]);});
+
+import { advanceAcceleration } from './game';
+test('accélération : palier après la série complète et remise à zéro après erreur',()=>{
+  let progress={limit:4,streak:0};
+  for(let i=0;i<4;i++)progress=advanceAcceleration(progress.limit,progress.streak,true,4,5,.5,.5);
+  assert.deepEqual(progress,{limit:4,streak:4});
+  progress=advanceAcceleration(progress.limit,progress.streak,true,4,5,.5,.5);
+  assert.deepEqual(progress,{limit:3.5,streak:0});
+  assert.deepEqual(advanceAcceleration(1,3,false,4,5,.5,.5),{limit:4,streak:0});
+});
+test('accélération : plancher respecté même après plusieurs paliers',()=>{
+  assert.deepEqual(advanceAcceleration(.6,4,true,4,5,.5,.5),{limit:.5,streak:0});
+  assert.deepEqual(advanceAcceleration(.5,4,true,4,5,.5,.5),{limit:.5,streak:0});
+});

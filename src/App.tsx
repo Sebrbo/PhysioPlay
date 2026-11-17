@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
-import { coverRect, visibleTargetZone, advanceCountdown, containRect, insetZone, scaleZone, advanceSessionClock, calibratedZone, contains, defaultZone, poseWrists, nextTarget, type Hand, type Point, type Zone } from './game';
+import { advanceAcceleration, coverRect, visibleTargetZone, advanceCountdown, containRect, insetZone, scaleZone, advanceSessionClock, calibratedZone, contains, defaultZone, poseWrists, nextTarget, type Hand, type Point, type Zone } from './game';
 
+type Mode = 'therapy'|'reaction'|'butterfly'|'traffic'|'acceleration';
+const modeNames:Record<Mode,string>={therapy:'Les cibles · calme',reaction:'Les cibles · rapide',butterfly:'Le papillon',traffic:'Feu vert / rouge',acceleration:'Accélération'};
 type Phase = 'idle'|'ready'|'countdown'|'calibrating'|'playing'|'paused'|'result';
 type Stats = { hits:number; misses:number; times:number[]; remaining:number };
 const initialStats=(duration:number):Stats=>({hits:0,misses:0,times:[],remaining:duration});
@@ -14,7 +16,9 @@ export default function App(){
   const settingsDialog=useRef<HTMLDialogElement>(null);
   const [settingsOpen,setSettingsOpen]=useState(false),[settingsTab,setSettingsTab]=useState<'session'|'zone'|'about'>('session');
   const [countdown,setCountdown]=useState(5);
-  const [mode,setMode]=useState<'therapy'|'reaction'>('therapy');
+  const [mode,setMode]=useState<Mode>('therapy');
+  const [series,setSeries]=useState(5),[decrement,setDecrement]=useState(.5),[minimum,setMinimum]=useState(.5);
+  const [challenge,setChallenge]=useState({limit:4,streak:0});
   const [hand,setHand]=useState<Hand>('both');
   const [duration,setDuration]=useState(60),[deadline,setDeadline]=useState(4),[size,setSize]=useState(48);
   const [phase,setPhase]=useState<Phase>('idle'),[source,setSource]=useState<'camera'|'demo'|null>(null);
@@ -25,9 +29,9 @@ export default function App(){
   const video=useRef<HTMLVideoElement>(null),canvas=useRef<HTMLCanvasElement>(null),stage=useRef<HTMLDivElement>(null);
   const stream=useRef<MediaStream|null>(null),detector=useRef<PoseLandmarker|null>(null),generation=useRef(0);
   const effectiveZone=zone?scaleZone(zone,zoneWidth,zoneHeight):null;
-  const state=useRef({phase,source,mode,hand,duration,deadline,size,zone:effectiveZone,immersive});
-  state.current={phase,source,mode,hand,duration,deadline,size,zone:effectiveZone,immersive};
-  const runtime=useRef({target:null as Point|null,hands:[] as Point[],samples:[] as Point[],calibrationStart:0,calibrationValid:0,last:0,lastSeen:0,lastVideo:-1,countdownMs:5000,active:0,targetAge:0,dwell:0,stats:initialStats(60),number:1,pointer:null as Point|null});
+  const state=useRef({phase,source,mode,hand,duration,deadline,series,decrement,minimum,size,zone:effectiveZone,immersive});
+  state.current={phase,source,mode,hand,duration,deadline,series,decrement,minimum,size,zone:effectiveZone,immersive};
+  const runtime=useRef({target:null as Point|null,hands:[] as Point[],samples:[] as Point[],calibrationStart:0,calibrationValid:0,last:0,lastSeen:0,lastVideo:-1,countdownMs:5000,active:0,targetAge:0,dwell:0,streak:0,limit:4,red:false,redTouched:false,destination:null as Point|null,stats:initialStats(60),number:1,pointer:null as Point|null});
   const changePhase=(p:Phase)=>{runtime.current.last=performance.now();state.current.phase=p;setPhase(p);};
   const stop=()=>{generation.current++;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;detector.current?.close();detector.current=null;if(video.current)video.current.srcObject=null;runtime.current.hands=[];runtime.current.target=null;setTracking(false);setSource(null);setZone(null);setZoneMode(null);changePhase('idle');setBusy(false);setMessage('Étape 1 : active la caméra. Ton navigateur demandera ensuite ton autorisation.');};
   useEffect(()=>()=>{generation.current++;stream.current?.getTracks().forEach(t=>t.stop());detector.current?.close();},[]);
@@ -81,7 +85,7 @@ export default function App(){
   function start(){
     if(!zone){changePhase('ready');setMessage('Calibre à nouveau la zone avant de commencer.');return;}
     if(!immersive){void toggleFullscreen();}
-    const r=runtime.current;r.stats=initialStats(duration);r.active=0;r.targetAge=0;r.dwell=0;r.number=1;r.target=null;r.countdownMs=5000;
+    const r=runtime.current;r.stats=initialStats(duration);r.active=0;r.targetAge=0;r.dwell=0;r.number=1;r.streak=0;r.limit=deadline;r.red=false;r.redTouched=false;r.destination=null;setChallenge({limit:deadline,streak:0});r.target=null;r.countdownMs=5000;
     setStats({...r.stats});setCountdown(5);changePhase('countdown');setMessage('Prépare-toi : le jeu passe en plein écran. Place tes mains pendant le décompte.');
   }
   function finish(){changePhase('result');runtime.current.target=null;setStats({...runtime.current.stats});setMessage('Séance terminée. Les résultats restent uniquement en mémoire.');}
@@ -115,25 +119,49 @@ export default function App(){
       }
       if(s.phase==='countdown'){
         const clock=advanceCountdown(r.countdownMs,elapsed);r.countdownMs=clock.remainingMs;setCountdown(clock.seconds);
-        if(clock.done){if(targetZone){r.target=nextTarget(targetZone,null);changePhase('playing');setMessage('Atteins le centre de la cible avec le poignet.');}else{changePhase('ready');setMessage('Calibre la zone avant de commencer.');}}
+        if(clock.done){if(targetZone){r.target=nextTarget(targetZone,null);changePhase('playing');setMessage(s.mode==='butterfly'?'Garde ton poignet dans le halo du papillon.':s.mode==='traffic'?'Touche GO, évite STOP.':'Atteins le centre de la cible avec le poignet.');}else{changePhase('ready');setMessage('Calibre la zone avant de commencer.');}}
       }
       else if(s.phase==='playing'){
         const clock=advanceSessionClock(r.active,elapsed,s.duration);
         r.active=clock.elapsed;r.stats.remaining=clock.remaining;
         if(clock.done){finish();}
-        else if(valid){r.targetAge+=elapsed;
-          if(r.target){const touching=r.hands.some(p=>contains(p,r.target!,s.size,w,h));r.dwell=touching?r.dwell+dt:0;
-            if(r.dwell>=(s.mode==='therapy'?250:80)){r.stats.hits++;r.stats.times.push(r.targetAge);r.number++;r.target=nextTarget(targetZone!,r.target);r.targetAge=0;r.dwell=0;}
-            else if(s.mode==='reaction'&&r.targetAge>=s.deadline*1000){r.stats.misses++;r.number++;r.target=nextTarget(targetZone!,r.target);r.targetAge=0;r.dwell=0;}
+        else {
+          r.targetAge+=elapsed;
+          if(r.target&&targetZone){
+            if(s.mode==='butterfly'){
+              if(!r.destination)r.destination=nextTarget(targetZone,r.target);
+              const dx=(r.destination.x-r.target.x)*w,dy=(r.destination.y-r.target.y)*h,distance=Math.hypot(dx,dy),step=70*dt/1000;
+              if(distance<=step){r.target=r.destination;r.destination=null;}else{r.target={x:r.target.x+dx/distance*step/w,y:r.target.y+dy/distance*step/h};}
+            }
+            const touching=valid&&r.hands.some(p=>contains(p,r.target!,s.size,w,h));
+            r.dwell=touching?r.dwell+dt:0;
+            let advance=false,miss=false;
+            if(s.mode==='butterfly'){
+              if(r.dwell>=1000){r.stats.hits++;r.dwell-=1000;}
+            }else if(s.mode==='traffic'&&r.red){
+              if(touching&&!r.redTouched){r.stats.misses++;r.redTouched=true;}
+              if(r.targetAge>=s.deadline*1000){if(!r.redTouched)r.stats.hits++;advance=true;}
+            }else{
+              const limit=s.mode==='acceleration'?r.limit:s.deadline;
+              // Expiration wins over a contact that arrives after the deadline.
+              if(s.mode!=='therapy'&&r.targetAge>=limit*1000){miss=true;advance=true;}
+              else if(r.dwell>=(s.mode==='therapy'?250:80)){r.stats.hits++;r.stats.times.push(r.targetAge);advance=true;}
+              if(miss)r.stats.misses++;
+              if(advance&&s.mode==='acceleration'){
+                const progress=advanceAcceleration(r.limit,r.streak,!miss,s.deadline,s.series,s.decrement,s.minimum);
+                r.limit=progress.limit;r.streak=progress.streak;
+                setChallenge({limit:r.limit,streak:r.streak});
+              }
+            }
+            if(advance){r.number++;r.target=nextTarget(targetZone,r.target);r.targetAge=0;r.dwell=0;r.red=s.mode==='traffic'&&Math.random()<.35;r.redTouched=false;}
           }
-          
-        }else{r.dwell=0;}
+        }
         setStats({...r.stats,times:[...r.stats.times]});
       }
       const z=targetZone;if(z&&(!s.immersive||s.phase==='ready'||s.phase==='calibrating')){ctx.strokeStyle='#50d5c570';ctx.lineWidth=2;ctx.setLineDash([8,8]);ctx.strokeRect(z.left*w,z.top*h,(z.right-z.left)*w,(z.bottom-z.top)*h);ctx.setLineDash([]);}
       if(r.target&&['playing','paused'].includes(s.phase)){
-        const x=r.target.x*w,y=r.target.y*h;ctx.shadowColor='#51e4c6';ctx.shadowBlur=25;ctx.fillStyle='#46d4b9';ctx.beginPath();ctx.arc(x,y,s.size,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
-        ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(x,y,s.size+7,-Math.PI/2,-Math.PI/2+Math.PI*2*(s.mode==='reaction'?Math.max(0,1-r.targetAge/(s.deadline*1000)):1));ctx.stroke();ctx.fillStyle='#0b3040';ctx.font='bold 27px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(r.number),x,y);
+        const x=r.target.x*w,y=r.target.y*h;ctx.shadowColor='#51e4c6';ctx.shadowBlur=25;ctx.fillStyle=s.mode==='traffic'&&r.red?'#f87171':'#46d4b9';ctx.beginPath();ctx.arc(x,y,s.size,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+        ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(x,y,s.size+7,-Math.PI/2,-Math.PI/2+Math.PI*2*(['reaction','traffic','acceleration'].includes(s.mode)?Math.max(0,1-r.targetAge/((s.mode==='acceleration'?r.limit:s.deadline)*1000)):1));ctx.stroke();ctx.fillStyle='#0b3040';ctx.font='bold 27px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(s.mode==='butterfly'?'🦋':s.mode==='traffic'?(r.red?'STOP':'GO'):String(r.number),x,y);
       }
       r.hands.forEach(p=>{ctx.beginPath();ctx.arc(p.x*w,p.y*h,12,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#13a9e0';ctx.lineWidth=4;ctx.stroke();});
       raf=requestAnimationFrame(frame);
@@ -143,12 +171,12 @@ export default function App(){
   const locked=busy||['playing','paused','countdown','calibrating'].includes(phase);
   const mean=stats.times.length?`${(stats.times.reduce((a,b)=>a+b,0)/stats.times.length/1000).toFixed(2)} s`:'—';
   return <div className="app">
-    <header><a className="brand" href="./"><span className="brand-icon">◎</span> Physio<span>Play</span></a><span className="version">V0.1.7 <i/> Traitement local</span></header>
+    <header><a className="brand" href="./"><span className="brand-icon">◎</span> Physio<span>Play</span></a><span className="version">V0.2.0 <i/> Traitement local</span></header>
     <main><section ref={play} className={`play ${immersive?'immersive':''}`} aria-label="Espace de jeu PhysioTargets">
       <div className="play-top"><div className="game-title"><strong>PhysioTargets</strong><span>{source==='demo'?'Démonstration':source==='camera'?(tracking?'● Poignet détecté':'○ En attente de suivi'):'Caméra désactivée'}</span></div>
       <div className="top-actions"><button disabled={locked} onClick={()=>setSettingsOpen(true)}>⚙ Réglages</button><button onClick={toggleFullscreen}>{immersive?'↙ Quitter le plein écran':'⛶ Plein écran'}</button></div></div>
       <div className="setup-toolbar">
-      <span className="session-summary">{mode==='therapy'?'Thérapeutique':'Réactivité'} · {duration} s · zone {zoneWidth} × {zoneHeight} %</span>
+      <span className="session-summary">{modeNames[mode]} · {duration} s · zone {zoneWidth} × {zoneHeight} %</span>
       <div className="session-actions">
       {source&&<>{source==='camera'&&zone&&<button disabled={locked} onClick={calibrate}>Adapter la zone · 8 s</button>}
       <button onClick={stop}>Arrêter {source==='camera'?'la caméra':'la démo'}</button></>}
@@ -156,8 +184,8 @@ export default function App(){
     <div className="stage" ref={stage} style={{aspectRatio:source==='camera'&&video.current?.videoWidth?`${video.current.videoWidth}/${video.current.videoHeight}`:'4/3'}} onPointerMove={demoPointer} onPointerLeave={()=>runtime.current.pointer=null} onPointerDown={demoPointer} onPointerUp={()=>{runtime.current.pointer=null;}}>
     <video ref={video} muted playsInline aria-label="Retour de la caméra en miroir"/><canvas ref={canvas} aria-label="Cibles et position des poignets"/>
     {immersive&&<>
-      <div className="immersive-hud" ref={hud}><div className="hud-stats" aria-label="Score et chronomètre"><div><span>CIBLES</span><strong>{String(stats.hits).padStart(2,'0')}</strong></div><div><span>CHRONO</span><strong>{Math.ceil(['ready','idle','countdown'].includes(phase)?duration:stats.remaining)}<small> s</small></strong></div></div>
-      <div className="hud-actions"><button aria-label="Retour à la préparation" onClick={backToPreparation}>← Retour</button>{phase==='playing'&&<button onClick={()=>changePhase('paused')}>Ⅱ Pause</button>}</div></div>
+      <div className="immersive-hud" ref={hud}><div className="hud-stats" aria-label="Score et chronomètre"><div><span>{mode==='butterfly'?'SECONDES SUIVIES':mode==='traffic'?'RÉUSSITES':'CIBLES'}</span><strong>{String(stats.hits).padStart(2,'0')}</strong></div><div><span>CHRONO</span><strong>{Math.ceil(['ready','idle','countdown'].includes(phase)?duration:stats.remaining)}<small> s</small></strong></div></div>
+      {mode==='acceleration'&&<div><strong>{challenge.limit.toFixed(1)} s</strong><small> · série {challenge.streak}/{series}</small></div>}<div className="hud-actions"><button aria-label="Retour à la préparation" onClick={backToPreparation}>← Retour</button>{phase==='playing'&&<button onClick={()=>changePhase('paused')}>Ⅱ Pause</button>}</div></div>
       {!locked&&phase!=='result'&&<div className="immersive-prepare">{!source?<button onClick={backToPreparation}>Préparer la caméra</button>:zone?<button className="primary" onClick={start}>Commencer · départ dans 5 s</button>:<button onClick={calibrate}>Calibrer · 8 s</button>}</div>}
     </>}
 
@@ -179,14 +207,14 @@ export default function App(){
       <p className="choice-help">Zone prédéfinie : vérifie que les cibles restent accessibles.</p>
     </div></div>}
     {phase==='calibrating'&&<div className="overlay calibration-guide"><p className="onboarding-step">ZONE PERSONNALISÉE</p><h2>Bouge dans ta zone confortable</h2><p>Balaie doucement l’espace avec les mains choisies,<br/>sans forcer ni rechercher l’amplitude maximale.</p><strong className="calibration-progress">{message}</strong><button onClick={()=>{changePhase('ready');setMessage('Choisis une zone pour continuer.');}}>Annuler la calibration</button></div>}
-    {source&&zone&&phase==='ready'&&!immersive&&<div className="ready-card"><div><p className="onboarding-step">ÉTAPE 3 SUR 3 · JOUER</p><strong>{zoneMode==='calibrated'?'Ta zone personnalisée est prête':'La zone standard est prête'}</strong><p>Le plein écran s’ouvre automatiquement, puis tu as 5 secondes pour te placer.</p></div><button className="onboarding-primary" onClick={start}>Commencer le jeu</button></div>}
+    {source&&zone&&phase==='ready'&&!immersive&&<div className="ready-card"><div><p className="onboarding-step">ÉTAPE 3 SUR 3 · JOUER</p><p>{modeNames[mode]} · Choisis ton jeu dans ⚙ Réglages.</p><strong>{zoneMode==='calibrated'?'Ta zone personnalisée est prête':'La zone standard est prête'}</strong><p>Le plein écran s’ouvre automatiquement, puis tu as 5 secondes pour te placer.</p></div><button className="onboarding-primary" onClick={start}>Commencer le jeu</button></div>}
     {phase==='countdown'&&<div className="overlay countdown-overlay" aria-live="polite"><p>PRÊT À JOUER ?</p><strong className="countdown-number">{countdown}</strong><p>Place-toi confortablement. Le chrono démarrera après le décompte.</p><button onClick={()=>{changePhase('ready');setMessage('Départ annulé.');}}>Annuler le départ</button></div>}
     {phase==='playing'&&!tracking&&<div className="tracking-notice" role="status">Replace les mains dans le cadre · la séance continue</div>}
     {phase==='paused'&&<div className="overlay"><h2>Une pause pour souffler.</h2><button className="primary" disabled={!zone} onClick={()=>changePhase('playing')}>Reprendre</button><button onClick={backToPreparation}>Revenir à la préparation</button></div>}
-    {phase==='result'&&<div className="overlay result"><p className="eyebrow">SÉANCE TERMINÉE</p><h2>{stats.hits} cibles atteintes</h2><p>Temps moyen d’atteinte : {mean}<br/>{mode==='reaction'?`${stats.misses} cibles expirées`:'Chaque mouvement compte.'}</p><button className="primary" onClick={start}>Rejouer</button><button onClick={backToPreparation}>Modifier la séance</button></div>}
-    {!immersive&&phase==='playing'&&tracking&&<span className="stage-hint">{mode==='therapy'?'Maintiens le poignet sur la cible · ¼ s':'Touche la cible avant la fin du cercle'}</span>}
+    {phase==='result'&&<div className="overlay result"><p className="eyebrow">SÉANCE TERMINÉE</p><h2>{stats.hits} {mode==='butterfly'?'secondes de suivi continu cumulé':mode==='traffic'?'consignes réussies':'cibles atteintes'}</h2><p>{mode!=='butterfly'&&<>Temps moyen d’atteinte : {mean}<br/></>}{mode!=='therapy'&&mode!=='butterfly'?`${stats.misses} erreurs ou cibles expirées`:'Chaque mouvement compte.'}</p><button className="primary" onClick={start}>Rejouer</button><button onClick={backToPreparation}>Modifier la séance</button></div>}
+    {!immersive&&phase==='playing'&&tracking&&<span className="stage-hint">{mode==='butterfly'?'Garde le poignet dans le halo du papillon':mode==='traffic'?'Touche GO · Évite STOP':mode==='therapy'?'Maintiens le poignet sur la cible · ¼ s':'Touche la cible avant la fin du cercle'}</span>}
 
-      </div><div className="metrics"><div><span>CIBLES</span><strong>{String(stats.hits).padStart(2,'0')}</strong></div><div><span>TEMPS RESTANT</span><strong>{Math.ceil(['ready','idle','countdown'].includes(phase)?duration:stats.remaining)}<small> s</small></strong></div>
+      </div><div className="metrics"><div><span>{mode==='butterfly'?'SECONDES SUIVIES':mode==='traffic'?'RÉUSSITES':'CIBLES'}</span><strong>{String(stats.hits).padStart(2,'0')}</strong></div><div><span>TEMPS RESTANT</span><strong>{Math.ceil(['ready','idle','countdown'].includes(phase)?duration:stats.remaining)}<small> s</small></strong></div>
       <div className="game-actions">{phase==='playing'&&<button onClick={()=>changePhase('paused')}>Ⅱ Pause</button>}{phase==='countdown'&&<button onClick={()=>{changePhase('ready');setMessage('Départ annulé.');}}>Annuler</button>}{(phase==='playing'||phase==='paused')&&<button onClick={finish}>Terminer</button>}</div></div>
       <p className="status" role="status">{message}</p>
       <dialog ref={settingsDialog} className="settings-dialog" aria-labelledby="settings-title" onCancel={()=>setSettingsOpen(false)} onClose={()=>setSettingsOpen(false)}>
@@ -194,11 +222,14 @@ export default function App(){
         <div className="settings-tabs" role="tablist" aria-label="Catégories des réglages">{([['session','Séance'],['zone','Zone des cibles'],['about','À propos']] as const).map(([id,label])=><button key={id} id={`tab-${id}`} role="tab" aria-selected={settingsTab===id} aria-controls={`panel-${id}`} onClick={()=>setSettingsTab(id)}>{label}</button>)}</div>
         <div className="settings-body" role="tabpanel" id={`panel-${settingsTab}`} aria-labelledby={`tab-${settingsTab}`}>
         {settingsTab==='session'&&<>
-          <div className="modes"><button className={mode==='therapy'?'selected':''} onClick={()=>setMode('therapy')}><strong>Thérapeutique</strong><small>Atteindre sans délai</small></button><button className={mode==='reaction'?'selected':''} onClick={()=>setMode('reaction')}><strong>Réactivité</strong><small>Toucher avant expiration</small></button></div>
+          <label>Jeu<select value={mode} onChange={e=>setMode(e.target.value as Mode)}>{Object.entries(modeNames).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
+          <p className="helper">{mode==='butterfly'?'Accompagne le papillon : garde ton point blanc dans son halo. Chaque seconde continue dans le halo rapporte un point.':mode==='traffic'?'Touche GO. Pour STOP, garde tes poignets hors de la cible jusqu’à sa disparition.':mode==='acceleration'?`Après ${series} cibles réussies de suite, le délai diminue de ${decrement} s, jusqu’à ${minimum} s. Une expiration remet le délai à ${deadline} s.`:'Atteins les cibles avec ton poignet.'}</p>
           <div className="fields"><label>Main suivie<select value={hand} onChange={e=>{setHand(e.target.value as Hand);setZone(null);}}><option value="both">Les deux mains</option><option value="left">Main gauche</option><option value="right">Main droite</option></select></label>
           <label>Durée<select value={duration} onChange={e=>setDuration(+e.target.value)}>{[30,60,90,120].map(n=><option key={n} value={n}>{n} secondes</option>)}</select></label>
           <label>Taille des cibles<select value={size} onChange={e=>setSize(+e.target.value)}><option value={60}>Grande</option><option value={48}>Moyenne</option><option value={34}>Petite</option></select></label>
-          {mode==='reaction'&&<label>Délai par cible<select value={deadline} onChange={e=>setDeadline(+e.target.value)}>{[2,3,4,6,8].map(n=><option key={n} value={n}>{n} secondes</option>)}</select></label>}</div>
+          {['reaction','traffic','acceleration'].includes(mode)&&<label>Délai par cible<select value={deadline} onChange={e=>setDeadline(+e.target.value)}>{[2,3,4,6,8].map(n=><option key={n} value={n}>{n} secondes</option>)}</select></label>}
+          {mode==='acceleration'&&<><label>Réussites par palier<select value={series} onChange={e=>setSeries(+e.target.value)}>{[2,3,5,10].map(n=><option key={n} value={n}>{n} cibles</option>)}</select></label><label>Réduction par palier<select value={decrement} onChange={e=>setDecrement(+e.target.value)}>{[.1,.25,.5,1].map(n=><option key={n} value={n}>{n} seconde</option>)}</select></label><label>Délai minimum<select value={minimum} onChange={e=>setMinimum(+e.target.value)}>{[.3,.5,.75,1].map(n=><option key={n} value={n}>{n} seconde</option>)}</select></label></>}
+          </div>
           <p className="helper">Chaque départ comporte 5 secondes de préparation, hors durée de séance. Après un changement de main, choisis à nouveau une zone personnalisée ou standard.</p>
         </>}
         {settingsTab==='zone'&&<><label>Largeur · {zoneWidth} %<input type="range" min="50" max="150" step="5" value={zoneWidth} onChange={e=>setZoneWidth(+e.target.value)}/></label><label>Hauteur · {zoneHeight} %<input type="range" min="50" max="150" step="5" value={zoneHeight} onChange={e=>setZoneHeight(+e.target.value)}/></label>
