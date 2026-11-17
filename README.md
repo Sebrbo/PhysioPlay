@@ -144,3 +144,6 @@ La zone standard reprend le rectangle prédéfini déjà utilisé dans la démon
 
 ## V0.3.0 — Repères sonores
 Sons synthétisés localement par Web Audio, activés au clic Commencer (ou Tester). Bips 5 à 1, départ distinct, touche réussie sauf Papillon, contact STOP (une fois par cible), expiration, palier/reset Accélération, pause/reprise, calibration réussie et fin. Sons activés par défaut à 40 %, réglables dans Sons. Les sons ne sont pas empilés si le contexte audio est interrompu ; retour/retrait de l’app annule les sons en cours. Aucun son par seconde de suivi Papillon ni pour un STOP évité. À vérifier sur iPad réel : volume/mode silencieux, reprise après masquage, décompte et erreurs.
+
+## V0.3.1 — Choix du jeu avant de démarrer
+À l’étape 3, un sélecteur « Choisis ton jeu » est placé directement au-dessus de Commencer. Il utilise le même mode que les réglages, sans réinitialiser la caméra ou la zone choisie. Disposition adaptée aux écrans étroits et bas.
