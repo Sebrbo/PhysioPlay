@@ -141,3 +141,6 @@ La zone standard reprend le rectangle prédéfini déjà utilisé dans la démon
 - Cibles libres et Cibles chronométrées : noms et consignes explicites.
 - STOP : 0,8 s par défaut, réglable de 0,4 à 1,5 s indépendamment des cibles vertes. Contact immédiat, une erreur par cible rouge, croix de confirmation et bilan séparant STOP touchés et verts expirés.
 - Papillon : cinq vitesses de ×0,25 à ×2, avec vitesse normale conservée par défaut.
+
+## V0.3.0 — Repères sonores
+Sons synthétisés localement par Web Audio, activés au clic Commencer (ou Tester). Bips 5 à 1, départ distinct, touche réussie sauf Papillon, contact STOP (une fois par cible), expiration, palier/reset Accélération, pause/reprise, calibration réussie et fin. Sons activés par défaut à 40 %, réglables dans Sons. Les sons ne sont pas empilés si le contexte audio est interrompu ; retour/retrait de l’app annule les sons en cours. Aucun son par seconde de suivi Papillon ni pour un STOP évité. À vérifier sur iPad réel : volume/mode silencieux, reprise après masquage, décompte et erreurs.
