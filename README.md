@@ -1,4 +1,4 @@
-# PhysioPlay V0.1.6
+# PhysioPlay V0.1.7
 
 Bouger · Jouer · Progresser. Prototype de jeu de cibles avec caméra frontale, sans serveur applicatif.
 
@@ -122,3 +122,11 @@ Références : [MediaPipe Hands Web](https://ai.google.dev/edge/mediapipe/soluti
 Les essais sur iPad ont montré des pertes régulières avec le modèle dédié aux mains. Retour au modèle Pose Landmarker Lite et aux points 15 et 16, avec les paramètres de détection validés avant la version 0.1.5 : calcul à chaque nouvelle image vidéo, seuil de visibilité > 0,65 et expiration des positions à 300 ms si le flux cesse de progresser. Une pose sans poignets valides efface les points immédiatement. La logique expérimentale de paume reste dans `src/hands.ts` pour de futurs essais, sans être importée par l'application ni chargée dans le jeu.
 
 Plein écran automatique au démarrage, décompte de cinq secondes, calibration au format de préparation, zone à 150 % et interface immersive conservés. Refaire la calibration, le contact revenant au poignet. Le suivi précis des mains pourra être testé séparément avant d'être réintroduit.
+
+## Mise à jour 0.1.7 — parcours de démarrage explicite
+
+Un grand bouton Activer la caméra remplace la case Autoriser puis le second bouton. Le clic demande directement la permission native du navigateur ; aucune image n'est enregistrée ou envoyée. Un chargement en cours peut être annulé.
+
+Après activation : étape 2, choix explicite entre Adapter ma zone (8 secondes) et Utiliser la zone standard sans calibration. Les points blancs signalent la détection des poignets ; la calibration mesure uniquement l'enveloppe 2D explorée pour placer les cibles. Elle reste facultative, et ne garantit pas l'accessibilité de chaque cible (particulièrement avec le facteur 150 %).
+
+La zone standard reprend le rectangle prédéfini déjà utilisé dans la démonstration, avec les facteurs largeur/hauteur des réglages. Elle n'est pas présentée comme personnalisée. Après le choix ou une calibration réussie, l'étape 3 montre un grand bouton Commencer le jeu. Les instructions de calibration sont affichées au centre de la vidéo. Les changements de main ou d'orientation demandent de choisir à nouveau une zone.
