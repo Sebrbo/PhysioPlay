@@ -136,3 +136,8 @@ La zone standard reprend le rectangle prédéfini déjà utilisé dans la démon
 - Feu vert / rouge : toucher GO, éviter STOP jusqu’à expiration. Un contact STOP compte une seule erreur.
 - Accélération : délai initial, réussites par palier, réduction et minimum réglables. Expiration = retour au délai initial et série remise à zéro.
 - Les délais continuent en cas de perte de détection ; Pause les fige.
+
+## V0.2.1 — Ajuster les jeux
+- Cibles libres et Cibles chronométrées : noms et consignes explicites.
+- STOP : 0,8 s par défaut, réglable de 0,4 à 1,5 s indépendamment des cibles vertes. Contact immédiat, une erreur par cible rouge, croix de confirmation et bilan séparant STOP touchés et verts expirés.
+- Papillon : cinq vitesses de ×0,25 à ×2, avec vitesse normale conservée par défaut.
